@@ -1,0 +1,18 @@
+{
+  "C_Cpp.clang_format_style": "Visual Studio",
+  "editor.formatOnSave": false,
+  "[cpp]": {
+    "editor.quickSuggestions": true
+  },
+  "[c]": {
+    "editor.quickSuggestions": true
+  },
+  "C_Cpp.intelliSenseEngineFallback": "Enabled",
+  "idf.portWin": "COM4",
+  "files.associations": {
+    "board_esp32_devkitc.h": "c",
+    "scheme_ble.h": "c",
+    "demo_header.h": "c"
+  },
+  "idf.adapterTargetName": "esp32"
+}

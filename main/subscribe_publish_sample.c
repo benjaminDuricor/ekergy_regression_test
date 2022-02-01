@@ -1005,7 +1005,10 @@ while (1) {
                             gpio_set_level(LED_GREEN, 1);             //turn on Green LED
                             gpio_set_level(LED_BLUE, 1);              //turn off BLUE 
                             gpio_set_level(LED_RED,0);                //turn on RED LED
-                            int ret = aws_iot_demo_main(0, NULL);                 
+
+                            ESP_LOGI(TAG, "aws_iot_demo main entry point: Stack remaining for task '%s' is %d bytes at counter, free mem is %d", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL), xPortGetFreeHeapSize());
+                            int ret = aws_iot_demo_main(0, NULL);   
+                            ESP_LOGI(TAG, "aws_iot_demo main exit point: Stack remaining for task '%s' is %d bytes at counter, free mem is %d", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL), xPortGetFreeHeapSize());              
                             if(ret==EXIT_SUCCESS) 
                                 jobCheckState =  JOB_CHECK_STATE_CHECKED_NO_UPDATE; //check to see if there is an update
                             jobCheckCounter = 0;
