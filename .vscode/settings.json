@@ -2,17 +2,30 @@
   "C_Cpp.clang_format_style": "Visual Studio",
   "editor.formatOnSave": false,
   "[cpp]": {
-    "editor.quickSuggestions": true
+    "editor.quickSuggestions": {
+      "comments": "on",
+      "strings": "on",
+      "other": "on"
+    }
   },
   "[c]": {
-    "editor.quickSuggestions": true
+    "editor.quickSuggestions": {
+      "comments": "on",
+      "strings": "on",
+      "other": "on"
+    }
   },
   "C_Cpp.intelliSenseEngineFallback": "Enabled",
-  "idf.portWin": "COM4",
+  "idf.portWin": "COM3",
   "files.associations": {
     "board_esp32_devkitc.h": "c",
     "scheme_ble.h": "c",
-    "demo_header.h": "c"
+    "demo_header.h": "c",
+    "task.h": "c",
+    "tls_freertos.h": "c",
+    "mqtt_subscription_manager.h": "c",
+    "logging_levels.h": "c"
   },
-  "idf.adapterTargetName": "esp32"
+  "idf.adapterTargetName": "esp32",
+  "idf.flashType": "UART"
 }

@@ -107,19 +107,6 @@
 #include "ota_mqtt_interface.h"
 #include "ota_pal.h"
 
-/* deep sleep */
-#include "soc/soc_caps.h"
-#include "esp_sleep.h"
-#include "driver/adc.h"
-#include "driver/rtc_io.h"
-#include "soc/rtc.h"
-#include "esp32/ulp.h"
-#include "soc/sens_periph.h"
-#include "driver/touch_pad.h"
-
-
-
-#define DEFAULT_WAKEUP_LEVEL    ESP_GPIO_WAKEUP_GPIO_LOW
 /* Include firmware version struct definition. */
 #include "ota_appversion32.h"
 
@@ -162,8 +149,6 @@ static void initialize_sntp(void);
 #define LED_GREEN   GPIO_NUM_17
 #define LED_BLUE    GPIO_NUM_18
 
-#define DEEPSLEEP   GPIO_NUM_32
-
 
 #define ECG_IDLE 0              // Idle state
 #define ECG_ACQUIRING 1         // ECG signal acquiring state
@@ -182,10 +167,6 @@ static void initialize_sntp(void);
 #define JOB_CHECK_STATE_CHECKED_NO_UPDATE       1   //checked, wait for 24 hours before next check
 
 #define MQTT_PROCESS_LOOP_TIMEOUT_MS        ( 1500U )
-
-/* deep sleep defines */
-#define DEFAULT_WAKEUP_LEVEL    ESP_GPIO_WAKEUP_GPIO_LOW
-#define TOUCH_THRESH_NO_USE 0
 
 typedef struct {
     int timer_group;
@@ -223,8 +204,8 @@ unsigned char blinkingPattern[9][10] = {
                             {1,0,1,0,1,0,1,0,1,0},  //Finishing - flashing green
                             {0,0,1,1,1,1,1,1,1,1},  //ERROR - WIFI disconnecting
                             {1,1,0,0,1,1,0,0,1,1},  //ERROR -MQTT failed
-                            {1,0,1,0,1,0,1,0,1,0},  //SSID address setting - flashing red
-                            {1,0,1,0,1,0,1,0,1,0}   //SSID address setting - flashing red
+                            {1,0,1,0,1,0,1,0,1,0},  //SSID address setting - flashing red      
+                            {1,0,1,0,1,0,1,0,1,0}   //SSID address setting - flashing red                
 
 };
 /* FreeRTOS event group to signal when we are connected & ready to make a request */
@@ -357,8 +338,6 @@ extern void * otaThread();
 
 extern void provisionEventCallback();
 //ycc 3-13-22 end
-//deep  sleep
-static void calibrate_touch_pad(touch_pad_t pad);
 
 float w0=0.0, w1=0.0, w2=0.0, w3=0.0, w4=0.0;         //for bandpath filter
 float bpfX, bpfX1;
@@ -392,35 +371,6 @@ static void initialize_sntp(void)
     sntp_set_sync_mode(SNTP_SYNC_MODE_SMOOTH);
 #endif
     sntp_init();
-}
-
-
-static void calibrate_touch_pad(touch_pad_t pad)
-{
-    int avg = 0;
-    const size_t calibration_count = 128;
-    for (int i = 0; i < calibration_count; ++i) {
-        uint16_t val;
-        touch_pad_read(pad, &val);
-        avg += val;
-    }
-    avg /= calibration_count;
-    const int min_reading = 300;
-    if (avg < min_reading) {
-        printf("Touch pad #%d average reading is too low: %d (expecting at least %d). "
-               "Not using for deep sleep wakeup.\n", pad, avg, min_reading);
-        touch_pad_config(pad, 0);
-    } else {
-        int threshold = avg - 100;
-        printf("Touch pad #%d average: %d, wakeup threshold set to %d.\n", pad, avg, threshold);
-        touch_pad_config(pad, threshold);
-    }
-}
-
-void calibrate_touch_pad_for_pre_provision(touch_pad_t pad) {
-    uint16_t touch_value;
-    touch_pad_read(pad, &touch_value);
-    touch_pad_set_thresh(pad, touch_value * 0.9);  // Set threshold to 90% of the read value
 }
 
 static void check_efuse(void)
@@ -740,7 +690,6 @@ void aws_iot_task(void *param) {
     int counter = 0;
     //int counter2=0;
     int counter3 = 0;
-    unsigned long deepSleepCounter =10000; // aproximately 33.3 sec before going to sleep 3.3mx10000 = 33
     int debouceCounter = 101;
     int jobCheckCounter = 0;
     //turn off all LEDs so that the LEDs turned on during provisioning can be turned off
@@ -748,27 +697,27 @@ void aws_iot_task(void *param) {
     gpio_set_level(LED_BLUE, 1);              //turn off BLUE and RED LEDs
     gpio_set_level(LED_RED, 1);   
 
-    /*
-        initialize_sntp();
+/*
+    initialize_sntp();
 
-        // wait for time to be set
+    // wait for time to be set
 
-        time_t now = 0;
-        struct tm timeinfo = { 0 };
-        int retry = 0;
-        const int retry_count = 10;
-        while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < retry_count) {
-            ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
-            vTaskDelay(2000 / portTICK_PERIOD_MS);
-        }
-        time(&now);
-        localtime_r(&now, &timeinfo);
-        setenv("TZ", "EST5EDT,M3.2.0/2,M11.1.0", 1);
-        tzset();
-        struct tm *tm_struct = localtime_r(&now, &timeinfo);
-        strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-        ESP_LOGI(TAG, "%s=  %d", strftime_buf, tm_struct->tm_hour);
-    */
+    time_t now = 0;
+    struct tm timeinfo = { 0 };
+    int retry = 0;
+    const int retry_count = 10;
+    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < retry_count) {
+        ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
+    }
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    setenv("TZ", "EST5EDT,M3.2.0/2,M11.1.0", 1);
+    tzset();
+    struct tm *tm_struct = localtime_r(&now, &timeinfo);
+    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+    ESP_LOGI(TAG, "%s=  %d", strftime_buf, tm_struct->tm_hour);
+ */
 while (1) {
         example_timer_event_t evt;
         xQueueReceive(s_timer_queue, &evt, portMAX_DELAY);
@@ -975,45 +924,6 @@ while (1) {
                     ecgRecCounter = 0;
                     ecgMqttCounter = 0;
                     dataBuffer = headBuffer;
-                    deepSleepCounter = 10000;
-                }
-                else {
-                    deepSleepCounter--;
-                    if(deepSleepCounter == 0){
-                         //deep sleep init
-                        // Initialize touch pad peripheral.
-                        // The default fsm mode is software trigger mode.
-
-                        ESP_ERROR_CHECK(touch_pad_init());
-                        // If use touch pad wake up, should set touch sensor FSM mode at 'TOUCH_FSM_MODE_TIMER'.
-                        
-                        touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER);
-                        // Set reference voltage for charging/discharging
-                        // In this case, the high reference valtage will be 2.4V - 1V = 1.4V
-                        // The low reference voltage will be 0.5
-                        // The larger the range, the larger the pulse count value.
-
-                        touch_pad_set_voltage(TOUCH_HVOLT_2V4, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
-                        
-                        //init RTC IO and mode for touch pad.
-                        // touch pad number 9 is GPIO 32
-
-                        touch_pad_config(TOUCH_PAD_NUM9, TOUCH_THRESH_NO_USE);
-
-                        calibrate_touch_pad(TOUCH_PAD_NUM9);
-
-                        printf("Enabling touch pad wakeup\n");
-                        esp_sleep_enable_touchpad_wakeup();
-                        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
-
-                        // Isolate GPIO12 pin from external circuits. This is needed for modules
-                        // which have an external pull-up resistor on GPIO12 (such as ESP32-WROVER)
-                        // to minimize current consumption.
-                        rtc_gpio_isolate(GPIO_NUM_12);
-                        gpio_set_level(SDN, 0);             //disable AD8232 operaion 
-                        printf("Entering deep sleep\n");
-                        esp_deep_sleep_start();  
-                    }
                 }
                 break;
             case ECG_ACQUIRING:
@@ -1221,8 +1131,6 @@ void app_main()
 
     s_timer_queue = xQueueCreate(10, sizeof(example_timer_event_t));
     //GPIO setup
-    gpio_reset_pin(32);
-    touch_pad_set_fsm_mode(TOUCH_FSM_MODE_DEFAULT);
     gpio_set_direction(LOPlus, GPIO_MODE_INPUT);
     gpio_set_direction(LOMinus, GPIO_MODE_INPUT);
     gpio_set_direction(SDN, GPIO_MODE_OUTPUT);
@@ -1231,9 +1139,6 @@ void app_main()
     gpio_set_direction(LED_GREEN, GPIO_MODE_OUTPUT);
     gpio_set_direction(LED_BLUE, GPIO_MODE_OUTPUT);
     gpio_set_direction(LED_RED, GPIO_MODE_OUTPUT);
-
-    gpio_set_direction(DEEPSLEEP, GPIO_MODE_INPUT);
-
     gpio_set_level(LED_GREEN, 1);             //turn on Green LED
     gpio_set_level(LED_BLUE, 1);              //turn off BLUE and RED LEDs
     gpio_set_level(LED_RED, 1);   
@@ -1242,8 +1147,6 @@ void app_main()
     gpio_set_level(DC, 0);              //select dc operation for AD8232
 
     //gpio_set_level(SDN, 0);             //disable AD8232 operaion for testing so that it will stay in IDLE
-    //ESP_ERROR_CHECK(esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TOUCHPAD));
-    //ESP_ERROR_CHECK(touch_pad_deinit());
 
     ad_tg_timer_init(TIMER_GROUP_0, TIMER_0, true,1);
     /*example_tg_timer_init(TIMER_GROUP_1, TIMER_0, false, 5);*/
@@ -1374,46 +1277,6 @@ void app_main()
 
 
         wifi_prov_print_qr(service_name, pop, PROV_TRANSPORT_BLE);
-                // Start a delay before checking provisioning status
-        vTaskDelay(pdMS_TO_TICKS(120000)); // 2-minutes delay
-
-        // Check if provisioned after delay
-        ESP_ERROR_CHECK(wifi_prov_mgr_is_provisioned(&provisioned));
-
-        wifi_prov_mgr_deinit(); // Always deinit after use
-
-        if (!provisioned) {
-            //deep sleep init
-            // Initialize touch pad peripheral.
-            // The default fsm mode is software trigger mode.
-
-            ESP_ERROR_CHECK(touch_pad_init());
-            // If use touch pad wake up, should set touch sensor FSM mode at 'TOUCH_FSM_MODE_TIMER'.
-            
-            touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER);
-            // Set reference voltage for charging/discharging
-            // In this case, the high reference valtage will be 2.4V - 1V = 1.4V
-            // The low reference voltage will be 0.5
-            // The larger the range, the larger the pulse count value.
-
-            touch_pad_set_voltage(TOUCH_HVOLT_2V4, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
-            
-            //init RTC IO and mode for touch pad.
-            // touch pad number 9 is GPIO 32
-
-            touch_pad_config(TOUCH_PAD_NUM9, TOUCH_THRESH_NO_USE);
-
-            calibrate_touch_pad(TOUCH_PAD_NUM9);
-
-            printf("Enabling touch pad wakeup\n");
-            esp_sleep_enable_touchpad_wakeup();
-            esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
-            ESP_LOGI(TAG, "Not provisioned within 30 seconds. Entering deep sleep.");
-            esp_deep_sleep_start();
-        } else {
-            ESP_LOGI(TAG, "Provisioned successfully.");
-            // Proceed with application logic
-        }
         /* Uncomment the following to wait for the provisioning to finish and then release
          * the resources of the manager. Since in this case de-initialization is triggered
          * by the default event loop handler, we don't need to call the following */
@@ -1710,5 +1573,4 @@ void app_main()
             returnStatus = EXIT_FAILURE;
         }
     }
-    esp_restart();
 }

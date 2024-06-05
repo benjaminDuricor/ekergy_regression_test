@@ -66,8 +66,11 @@
 
 /* Include firmware version struct definition. */
 #include "ota_appversion32.h"
-
+#include "cJSON.h"
 #include "demo_header.h"
+//ycc 071122
+#include "nvs.h"
+#include "nvs_flash.h"
 
 /**
  * These configuration settings are required to run the OTA demo which uses mutual authentication.
@@ -122,7 +125,7 @@ extern const uint8_t client_key_pem_end[] asm("_binary_client_key_end");
  * @brief Transport timeout in milliseconds for transport send and receive.
  * 01/10/21 ycc changed to 6000 from 1500U
  */
-#define TRANSPORT_SEND_RECV_TIMEOUT_MS      ( 6000U )
+#define TRANSPORT_SEND_RECV_TIMEOUT_MS      ( 2000U )
 
 /**
  * @brief Timeout for receiving CONNACK packet in milli seconds.
@@ -153,7 +156,7 @@ extern const uint8_t client_key_pem_end[] asm("_binary_client_key_end");
 /**
  * @brief Period for demo loop sleep in milliseconds.
  */
-#define OTA_EXAMPLE_LOOP_SLEEP_PERIOD_MS    ( 5U )
+#define OTA_EXAMPLE_LOOP_SLEEP_PERIOD_MS    ( 5U )      //031122 50000U 
 
 /**
  * @brief Size of the network buffer to receive the MQTT message.
@@ -168,13 +171,13 @@ extern const uint8_t client_key_pem_end[] asm("_binary_client_key_end");
  * @brief The delay used in the main OTA Demo task loop to periodically output the OTA
  * statistics like number of packets received, dropped, processed and queued per connection.
  */
-#define OTA_EXAMPLE_TASK_DELAY_MS                ( 1000U )
+#define OTA_EXAMPLE_TASK_DELAY_MS                ( 1000U )  //ycc 031022  10000000
 
 /**
  * @brief The timeout for waiting for the agent to get suspended after closing the
  * connection.
  */
-#define OTA_SUSPEND_TIMEOUT_MS                   ( 5000U )
+#define OTA_SUSPEND_TIMEOUT_MS                   ( 5000U ) //ycc 031022 5000000U
 
 /**
  * @brief The timeout for waiting before exiting the OTA demo.
@@ -251,7 +254,29 @@ extern const uint8_t client_key_pem_end[] asm("_binary_client_key_end");
 
 
 /*-----------------------------------------------------------*/
+//ycc 031522
+#define ECG_IDLE 0              // Idle state
+#define ECG_ACQUIRING 1         // ECG signal acquiring state
+#define ECG_RECORDING 2         // ECG signal recording state
+#define ECG_SENDING_MQTT 3      // ECG signal sending to mqtt state
+#define ECG_FINISH 4            // data has been sent, and hands have to be removed from electroplates to return to idle state
+#define ECG_ERROR_WIFI 5        // error WIFI, should flash the red LED
+#define ECG_ERROR_MQTT 6        // error MQTT 
+#define ECG_OTA_UPDATE 7        // ECG going through ota update
+#define ECG_SSID_RESET 8
 
+//ycc 071122
+extern nvs_handle_t fleet_prov_handle;
+extern short nvsProvisionStatus;
+extern short ecgState;
+extern char macAddress[13];        //MAC address is used as client ID
+static const char *TAG = "OTA";
+bool provisionStatus = false;
+char *registrationBuff;
+extern char *private_key;
+extern char *certificate_pem;
+extern size_t private_key_len;
+extern size_t certificate_pem_len;
 /* Linkage for error reporting. */
 extern int errno;
 
@@ -268,27 +293,30 @@ const AppVersion32_t appFirmwareVersion =
 /**
  * @brief Network connection context used in this demo.
  */
-static NetworkContext_t networkContext;
+//static 
+NetworkContext_t networkContext;
 
 /**
  * @brief MQTT connection context used in this demo.
  */
-static MQTTContext_t mqttContext;
+//static 
+MQTTContext_t mqttContext;
 
 /**
  * @brief Keep a flag for indicating if the MQTT connection is alive.
  */
-static bool mqttSessionEstablished = false;
+//static 
+extern bool mqttSessionEstablished;
 
 /**
  * @brief Mutex for synchronizing coreMQTT API calls.
  */
-static pthread_mutex_t mqttMutex;
+extern pthread_mutex_t mqttMutex;
 
 /**
  * @brief Semaphore for synchronizing buffer operations.
  */
-static osi_sem_t bufferSemaphore;
+extern osi_sem_t bufferSemaphore;
 
 /**
  * @brief Enum for type of OTA job messages received.
@@ -338,7 +366,8 @@ static OtaEventData_t eventBuffer[ otaconfigMAX_NUM_OTA_DATA_BUFFERS ];
 /**
  * @brief The buffer passed to the OTA Agent from application while initializing.
  */
-static OtaAppBuffer_t otaBuffer =
+//static 
+OtaAppBuffer_t otaBuffer =
 {
     .pUpdateFilePath    = updateFilePath,
     .updateFilePathsize = OTA_MAX_FILE_PATH_SIZE,
@@ -387,7 +416,8 @@ static int establishMqttSession( MQTTContext_t * pMqttContext );
  *
  * @return OtaMqttSuccess if success , other error code on failure.
  */
-static OtaMqttStatus_t mqttPublish( const char * const pacTopic,
+//static 
+OtaMqttStatus_t mqttPublish( const char * const pacTopic,
                                     uint16_t topicLen,
                                     const char * pMsg,
                                     uint32_t msgSize,
@@ -408,7 +438,8 @@ static OtaMqttStatus_t mqttPublish( const char * const pacTopic,
  *
  * @return OtaMqttSuccess if success , other error code on failure.
  */
-static OtaMqttStatus_t mqttSubscribe( const char * pTopicFilter,
+//static 
+OtaMqttStatus_t mqttSubscribe( const char * pTopicFilter,
                                       uint16_t topicFilterLength,
                                       uint8_t qos );
 
@@ -436,7 +467,8 @@ static OtaMqttStatus_t mqttUnsubscribe( const char * pTopicFilter,
  * @param[in] pParam Can be used to pass down functionality to the agent task
  * @return void* returning null.
  */
-static void * otaThread( void * pParam );
+//static 
+void * otaThread( void * pParam );
 
 /**
  * @brief Start OTA demo.
@@ -449,27 +481,31 @@ static void * otaThread( void * pParam );
  *
  * @return EXIT_SUCCESS or EXIT_FAILURE.
  */
-static int startOTADemo( void );
+//static 
+int startOTADemo( void );
 
 /**
  * @brief Set OTA interfaces.
  *
  * @param[in]  pOtaInterfaces pointer to OTA interface structure.
  */
-static void setOtaInterfaces( OtaInterfaces_t * pOtaInterfaces );
+//static 
+void setOtaInterfaces( OtaInterfaces_t * pOtaInterfaces );
 
 /**
  * @brief Disconnect from the MQTT broker and close connection.
  *
  */
-static void disconnect( void );
+//static 
+void disconnect( void );
 
 /**
  * @brief Attempt to connect to the MQTT broker.
  *
  * @return int EXIT_SUCCESS if a connection is established.
  */
-static int establishConnection( void );
+//static 
+int establishConnection( void );
 
 /**
  * @brief Initialize MQTT by setting up transport interface and network.
@@ -478,7 +514,8 @@ static int establishConnection( void );
  * @param[in] pNetworkContext Network context to connect on.
  * @return int EXIT_SUCCESS if MQTT component is initialized
  */
-static int initializeMqtt( MQTTContext_t * pMqttContext,
+//static 
+int initializeMqtt( MQTTContext_t * pMqttContext,
                            NetworkContext_t * pNetworkContext );
 
 /**
@@ -518,7 +555,8 @@ static uint32_t generateRandomNumber();
  * @param[in] event Event from OTA lib of type OtaJobEvent_t.
  * @return None.
  */
-static void otaAppCallback( OtaJobEvent_t event,
+//static 
+void otaAppCallback( OtaJobEvent_t event,
                             const void * pData );
 
 /**
@@ -605,7 +643,8 @@ OtaEventData_t * otaEventBufferGet( void )
 
 /*-----------------------------------------------------------*/
 
-static void otaAppCallback( OtaJobEvent_t event,
+//static 
+void otaAppCallback( OtaJobEvent_t event,
                             const void * pData )
 {
     OtaErr_t err = OtaErrUninitialized;
@@ -813,9 +852,52 @@ static void mqttEventCallback( MQTTContext_t * pMqttContext,
      * out the lower bits to check if the packet is publish. */
     if( ( pPacketInfo->type & 0xF0U ) == MQTT_PACKET_TYPE_PUBLISH )
     {
+        printf("receved mqqEventcallback, nvsProvsionStatus = %d, provisionStatus= %d\n", nvsProvisionStatus, provisionStatus);
         assert( pDeserializedInfo->pPublishInfo != NULL );
         /* Handle incoming publish. */
+        if(!nvsProvisionStatus){
+            if(!provisionStatus)
+            {
+            cJSON *cjson_root = cJSON_Parse(pDeserializedInfo->pPublishInfo->pPayload);
+            cJSON *certificatePem = cJSON_GetObjectItem(cjson_root,"certificatePem");
+            cJSON *certificateID = cJSON_GetObjectItem(cjson_root,"certificateID");
+            cJSON *privateKey = cJSON_GetObjectItem(cjson_root,"privateKey");
+            cJSON *certificateOwnershipToken = cJSON_GetObjectItem(cjson_root,"certificateOwnershipToken");
+            printf("certificatPem = %s\n", certificatePem->valuestring);
+            printf("certificateID = %s\n", certificateID->valuestring);
+            printf("privateKey = %s\n", privateKey->valuestring);
+            esp_err_t err = nvs_set_str(fleet_prov_handle,  "certificatePem", certificatePem->valuestring);
+            printf((err != ESP_OK) ? "priviate key Writing to NVS Failed!\n" : "private key Writing to NVS Done\n");
+            err = nvs_set_str(fleet_prov_handle,  "privateKey", privateKey->valuestring); 
+            printf((err != ESP_OK) ? "certificatePem NVS Failed!\n" : "certificate NVS Done\n");       
+            printf("certificateOwnershipToken = %s\n", certificateOwnershipToken->valuestring);
+            printf("topic name= %s, payload = %s\n", pDeserializedInfo->pPublishInfo->pTopicName, (char *)pDeserializedInfo->pPublishInfo->pPayload);
+
+
+            cJSON *registrationPublish = NULL;
+            registrationPublish = cJSON_CreateObject();
+            cJSON_AddStringToObject(registrationPublish, "certificateOwnershipToken", certificateOwnershipToken->valuestring);
+
+            cJSON *cjson_parameters = cJSON_CreateObject();
+            cJSON_AddStringToObject(cjson_parameters, "SerialNumber", macAddress);
+            cJSON_AddStringToObject(cjson_parameters, "DeviceLocation", "Seattle");
+            cJSON_AddItemToObject(registrationPublish, "parameters", cjson_parameters);  
+
+            char *str = cJSON_Print(registrationPublish);
+            registrationBuff = cJSON_PrintUnformatted(registrationPublish);
+            printf("registration publish JSON = %s\n", str);
+            printf("registrationJSON=%s\n", (char *)registrationBuff);
+            printf("length of strUnf is %d\n", strlen(registrationBuff));
+
+            provisionStatus = true;
+            }
+            else
+            {
+            printf("topic name= %s, payload = %s payload length = %d\n", pDeserializedInfo->pPublishInfo->pTopicName, (char *)pDeserializedInfo->pPublishInfo->pPayload, pDeserializedInfo->pPublishInfo->payloadLength);
+            }
+        }
         SubscriptionManager_DispatchHandler( pMqttContext, pDeserializedInfo->pPublishInfo );
+        
     }
     else
     {
@@ -860,7 +942,8 @@ static uint32_t generateRandomNumber()
 
 /*-----------------------------------------------------------*/
 
-static int initializeMqtt( MQTTContext_t * pMqttContext,
+//static 
+int initializeMqtt( MQTTContext_t * pMqttContext,
                            NetworkContext_t * pNetworkContext )
 {
     int returnStatus = EXIT_SUCCESS;
@@ -925,10 +1008,21 @@ static int connectToServerWithBackoffRetries( NetworkContext_t * pNetworkContext
     /* If #CLIENT_USERNAME is defined, username/password is used for authenticating
      * the client. */
     #ifndef CLIENT_USERNAME
+    if(!nvsProvisionStatus){
         opensslCredentials->pClientCert = ( const unsigned char * ) client_cert_pem_start;
         opensslCredentials->clientCertSize = client_cert_pem_end - client_cert_pem_start;
         opensslCredentials->pPrivateKey = ( const unsigned char * ) client_key_pem_start;
         opensslCredentials->privateKeySize = client_key_pem_end - client_key_pem_start;
+    }
+    else {
+        opensslCredentials->pClientCert = ( const unsigned char * ) certificate_pem;
+        opensslCredentials->clientCertSize = certificate_pem_len;
+        opensslCredentials->pPrivateKey = ( const unsigned char * ) private_key;
+        opensslCredentials->privateKeySize = private_key_len;
+    }
+        //ycc 071422
+        //printf("crt length = %d, client_cert_pem = %s\n",opensslCredentials->clientCertSize, opensslCredentials->pClientCert);
+        //printf("key length = %d, client_key_pem = %s\n", opensslCredentials->privateKeySize, opensslCredentials->pPrivateKey);
     #endif
 
     /* AWS IoT requires devices to send the Server Name Indication (SNI)
@@ -982,6 +1076,12 @@ static int connectToServerWithBackoffRetries( NetworkContext_t * pNetworkContext
                    AWS_IOT_ENDPOINT_LENGTH,
                    AWS_IOT_ENDPOINT,
                    AWS_MQTT_PORT ) );
+        //ycc 031022 
+        uint32_t free_heap_size=0, min_free_heap_size=0;
+        free_heap_size = esp_get_free_heap_size();
+        min_free_heap_size = esp_get_minimum_free_heap_size(); 
+        //printf("\n free heap size = %d \t  min_free_heap_size = %d \n",free_heap_size,min_free_heap_size); 
+        //end 031022
         opensslStatus = TLS_FreeRTOS_Connect ( pNetworkContext,
                                             serverInfo.pHostName,
                                             serverInfo.port,
@@ -1035,8 +1135,9 @@ static int establishMqttSession( MQTTContext_t * pMqttContext )
     /* The client identifier is used to uniquely identify this MQTT client to
      * the MQTT broker. In a production device the identifier can be something
      * unique, such as a device serial number. */
-    connectInfo.pClientIdentifier = CLIENT_IDENTIFIER;
-    connectInfo.clientIdentifierLength = CLIENT_IDENTIFIER_LENGTH;
+
+    connectInfo.pClientIdentifier = macAddress;//CLIENT_IDENTIFIER;
+    connectInfo.clientIdentifierLength =  ( ( uint16_t ) ( sizeof( macAddress ) - 1 ) );// CLIENT_IDENTIFIER_LENGTH;
 
     /* The maximum time interval in seconds which is allowed to elapse
      * between two Control Packets.
@@ -1105,17 +1206,19 @@ static int establishMqttSession( MQTTContext_t * pMqttContext )
 
 /*-----------------------------------------------------------*/
 
-static int establishConnection( void )
+//static 
+int establishConnection( void )
 {
     int returnStatus = EXIT_FAILURE;
-
+    //ycc 031522
+    ESP_LOGI(TAG, "establishConnection() Stack remaining for task '%s' is %d bytes free memory is %d", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL), xPortGetFreeHeapSize());
     /* Attempt to connect to the MQTT broker. If connection fails, retry after
      * a timeout. Timeout value will be exponentially increased till the maximum
      * attempts are reached or maximum timeout value is reached. The function
      * returns EXIT_FAILURE if the TCP connection cannot be established to
      * broker after configured number of attempts. */
     returnStatus = connectToServerWithBackoffRetries( &networkContext );
-
+    ESP_LOGI(TAG, "after connectToServer() Stack remaining for task '%s' is %d bytes free memory is %d", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL),xPortGetFreeHeapSize());
     if( returnStatus != EXIT_SUCCESS )
     {
         /* Log error to indicate connection failure. */
@@ -1133,7 +1236,7 @@ static int establishConnection( void )
         /* Sends an MQTT Connect packet using the established TLS session,
          * then waits for connection acknowledgment (CONNACK) packet. */
         returnStatus = establishMqttSession( &mqttContext );
-
+    ESP_LOGI(TAG, "after establishMqttSession Stack remaining for task '%s' is %d bytes free memory is %d", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL), xPortGetFreeHeapSize());
         if( returnStatus != EXIT_SUCCESS )
         {
             LogError( ( "Failed creating an MQTT connection to %.*s.",
@@ -1155,7 +1258,8 @@ static int establishConnection( void )
 
 /*-----------------------------------------------------------*/
 
-static void disconnect( void )
+//static 
+void disconnect( void )
 {
     /* Disconnect from broker. */
     LogInfo( ( "Disconnecting the MQTT connection with %s.", AWS_IOT_ENDPOINT ) );
@@ -1239,8 +1343,8 @@ static void registerSubscriptionManagerCallback( const char * pTopicFilter,
 }
 
 /*-----------------------------------------------------------*/
-
-static OtaMqttStatus_t mqttSubscribe( const char * pTopicFilter,
+//static
+OtaMqttStatus_t mqttSubscribe( const char * pTopicFilter,
                                       uint16_t topicFilterLength,
                                       uint8_t qos )
 {
@@ -1301,7 +1405,8 @@ static OtaMqttStatus_t mqttSubscribe( const char * pTopicFilter,
 
 /*-----------------------------------------------------------*/
 
-static OtaMqttStatus_t mqttPublish( const char * const pacTopic,
+//static 
+OtaMqttStatus_t mqttPublish( const char * const pacTopic,
                                     uint16_t topicLen,
                                     const char * pMsg,
                                     uint32_t msgSize,
@@ -1315,7 +1420,6 @@ static OtaMqttStatus_t mqttPublish( const char * const pacTopic,
     BackoffAlgorithmStatus_t backoffAlgStatus = BackoffAlgorithmSuccess;
     BackoffAlgorithmContext_t reconnectParams;
     uint16_t nextRetryBackOff;
-
 
     /* Initialize reconnect attempts and interval */
     BackoffAlgorithm_InitializeParams( &reconnectParams,
@@ -1387,10 +1491,84 @@ static OtaMqttStatus_t mqttPublish( const char * const pacTopic,
 
     return otaRet;
 }
-
 /*-----------------------------------------------------------*/
 
-static OtaMqttStatus_t mqttUnsubscribe( const char * pTopicFilter,
+//static 
+OtaMqttStatus_t mqttPublishNoMutex( const char * const pacTopic,
+                                    uint16_t topicLen,
+                                    const char * pMsg,
+                                    uint32_t msgSize,
+                                    uint8_t qos )
+{
+    OtaMqttStatus_t otaRet = OtaMqttSuccess;
+
+    MQTTStatus_t mqttStatus = MQTTBadParameter;
+    MQTTPublishInfo_t publishInfo = { 0 };
+    MQTTContext_t * pMqttContext = &mqttContext;
+    BackoffAlgorithmStatus_t backoffAlgStatus = BackoffAlgorithmSuccess;
+    BackoffAlgorithmContext_t reconnectParams;
+    uint16_t nextRetryBackOff;
+
+    /* Initialize reconnect attempts and interval */
+    BackoffAlgorithm_InitializeParams( &reconnectParams,
+                                       CONNECTION_RETRY_BACKOFF_BASE_MS,
+                                       CONNECTION_RETRY_MAX_BACKOFF_DELAY_MS,
+                                       MQTT_PUBLISH_RETRY_MAX_ATTEMPS );
+
+    /* Set the required publish parameters. */
+    publishInfo.pTopicName = pacTopic;
+    publishInfo.topicNameLength = topicLen;
+    publishInfo.qos = qos;
+    publishInfo.pPayload = pMsg;
+    publishInfo.payloadLength = msgSize;
+    do
+        {
+            mqttStatus = MQTT_Publish( pMqttContext,
+                                       &publishInfo,
+                                       MQTT_GetPacketId( pMqttContext ) );
+
+             if( mqttStatus != MQTTSuccess )
+            {
+                /* Generate a random number and get back-off value (in milliseconds) for the next connection retry. */
+                backoffAlgStatus = BackoffAlgorithm_GetNextBackoff( &reconnectParams, generateRandomNumber(), &nextRetryBackOff );
+
+                if( backoffAlgStatus == BackoffAlgorithmRetriesExhausted )
+                {
+                    LogError( ( "Publish failed, all attempts exhausted." ) );
+                }
+                else if( backoffAlgStatus == BackoffAlgorithmSuccess )
+                {
+                    LogWarn( ( "Publish failed. Retrying connection "
+                               "after %hu ms backoff.",
+                               ( unsigned short ) nextRetryBackOff ) );
+                    vTaskDelay( nextRetryBackOff/portTICK_PERIOD_MS );
+                }
+            }
+        } while( ( mqttStatus != MQTTSuccess ) && ( backoffAlgStatus == BackoffAlgorithmSuccess ) );
+
+
+ 
+
+
+    if( mqttStatus != MQTTSuccess )
+    {
+        LogError( ( "Failed to send PUBLISH packet to broker with error = %u.", mqttStatus ) );
+
+        otaRet = OtaMqttPublishFailed;
+    }
+    else
+    {
+        LogInfo( ( "Sent PUBLISH packet to broker %.*s to broker.\n\n",
+                   topicLen,
+                   pacTopic ) );
+    }
+
+    return otaRet;
+}
+/*-----------------------------------------------------------*/
+
+//static 
+OtaMqttStatus_t mqttUnsubscribe( const char * pTopicFilter,
                                         uint16_t topicFilterLength,
                                         uint8_t qos )
 {
@@ -1445,7 +1623,8 @@ static OtaMqttStatus_t mqttUnsubscribe( const char * pTopicFilter,
 
 /*-----------------------------------------------------------*/
 
-static void setOtaInterfaces(OtaInterfaces_t* pOtaInterfaces)
+//static
+void setOtaInterfaces(OtaInterfaces_t* pOtaInterfaces)
 {
     /* Initialize OTA library OS Interface. */
     pOtaInterfaces->os.event.init = OtaInitEvent_FreeRTOS;
@@ -1477,7 +1656,8 @@ static void setOtaInterfaces(OtaInterfaces_t* pOtaInterfaces)
 
 /*-----------------------------------------------------------*/
 
-static void * otaThread( void * pParam )
+//static 
+void * otaThread( void * pParam )
 {
     /* Calling OTA agent task. */
     OTA_EventProcessingTask( pParam );
@@ -1485,7 +1665,8 @@ static void * otaThread( void * pParam )
     return NULL;
 }
 /*-----------------------------------------------------------*/
-static int startOTADemo( void )
+//static 
+int startOTADemo( void )
 {
     /* Status indicating a successful demo or not. */
     int returnStatus = EXIT_SUCCESS;
@@ -1528,7 +1709,7 @@ static int startOTADemo( void )
     {
         if( ( otaRet = OTA_Init( &otaBuffer,
                                  &otaInterfaces,
-                                 ( const uint8_t * ) ( CLIENT_IDENTIFIER ),
+                                 ( const uint8_t * ) ( macAddress ),
                                  otaAppCallback ) ) != OtaErrNone )
         {
             LogError( ( "Failed to initialize OTA Agent, exiting = %u.",
@@ -1561,11 +1742,15 @@ static int startOTADemo( void )
          * OTA job */
         while( ( ( state = OTA_GetState() ) != OtaAgentStateStopped ) )
         {
+            //ycc 031522 
+            //ycc 031522
+            ESP_LOGI(TAG, "OTA Stack remaining for task '%s' is %d bytes free memory is %d", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL), xPortGetFreeHeapSize());
+            //printf("mqe = %d\n", mqttSessionEstablished);
             if( mqttSessionEstablished != true )
             {
                 /* Connect to MQTT broker and create MQTT connection. */
                 returnStatus = establishConnection();
-
+                //printf("return status = %d\n", returnStatus);
                 if( returnStatus == EXIT_SUCCESS )
                 {
                     /* Check if OTA process was suspended and resume if required. */
@@ -1577,6 +1762,7 @@ static int startOTADemo( void )
                     else
                     {
                         /* Send start event to OTA Agent.*/
+                    //printf("sending start signal");
                         eventMsg.eventId = OtaAgentEventStart;
                         OTA_SignalEvent( &eventMsg );
                     }
@@ -1589,6 +1775,7 @@ static int startOTADemo( void )
                 if( pthread_mutex_lock( &mqttMutex ) == 0 )
                 {
                     /* Loop to receive packet from transport interface. */
+                    //printf("MQTT_ProcessLoop");
                     mqttStatus = MQTT_ProcessLoop( &mqttContext, MQTT_PROCESS_LOOP_TIMEOUT_MS );
 
                     pthread_mutex_unlock( &mqttMutex );
@@ -1606,8 +1793,8 @@ static int startOTADemo( void )
                     OTA_GetStatistics( &otaStatistics );
 
                     OtaState_t sOta = OTA_GetState(); 
-                    //OtaErr_t uOta = OTA_CheckForUpdate();
-
+                    //OtaErr_t uOta = OTA_CheckForUpdate(); //ycc
+                    if(sOta>4) ecgState = ECG_OTA_UPDATE;
                     LogInfo( ( " Received: %u   Queued: %u   Processed: %u   Dropped: %u  State:%u ",
                                otaStatistics.otaPacketsReceived,
                                otaStatistics.otaPacketsQueued,
@@ -1686,82 +1873,11 @@ int aws_iot_demo_main( int argc,
     ( void ) argc;
     ( void ) argv;
 
-    /* Return error status. */
-    int returnStatus = EXIT_SUCCESS;
-
-    /* Semaphore initialization flag. */
-    bool bufferSemInitialized = false;
-    bool mqttMutexInitialized = false;
-
-    /* Initialize semaphore for buffer operations. */
-    if( osi_sem_new( &bufferSemaphore, 0x7FFFU, 1 ) != 0 )
-    {
-        LogError( ( "Failed to initialize buffer semaphore"
-                    ",errno=%s",
-                    strerror( errno ) ) );
-
-        returnStatus = EXIT_FAILURE;
-    }
-    else
-    {
-        bufferSemInitialized = true;
-    }
-
-    /* Initialize mutex for coreMQTT APIs. */
-    if( pthread_mutex_init( &mqttMutex, NULL ) != 0 )
-    {
-        LogError( ( "Failed to initialize mutex for mqtt apis"
-                    ",errno=%s",
-                    strerror( errno ) ) );
-
-        returnStatus = EXIT_FAILURE;
-    }
-    else
-    {
-        mqttMutexInitialized = true;
-    }
-
-    if( returnStatus == EXIT_SUCCESS )
-    {
-        /* Initialize MQTT library. Initialization of the MQTT library needs to be
-         * done only once in this demo. */
-        returnStatus = initializeMqtt( &mqttContext, &networkContext );
-    }
-
-    if( returnStatus == EXIT_SUCCESS )
-    {
+    
         /* Start OTA demo. */
-        returnStatus = startOTADemo();
-    }
+    int ret = startOTADemo();
+   
 
-    /* Disconnect from broker and close connection. */
-    disconnect();
-
-    if( bufferSemInitialized == true )
-    {
-        /* Cleanup semaphore created for buffer operations. */
-        if( osi_sem_free( &bufferSemaphore ) != 0 )
-        {
-            LogError( ( "Failed to destroy buffer semaphore"
-                        ",errno=%s",
-                        strerror( errno ) ) );
-
-            returnStatus = EXIT_FAILURE;
-        }
-    }
-
-    if( mqttMutexInitialized == true )
-    {
-        /* Cleanup mutex created for MQTT operations. */
-        if( pthread_mutex_destroy( &mqttMutex ) != 0 )
-        {
-            LogError( ( "Failed to destroy mutex for mqtt apis"
-                        ",errno=%s",
-                        strerror( errno ) ) );
-
-            returnStatus = EXIT_FAILURE;
-        }
-    }
-
-    return returnStatus;
+    vTaskDelete(NULL);
+    return ret;
 }

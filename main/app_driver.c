@@ -16,6 +16,8 @@
 #include "app_priv.h"
 #include "board_esp32_devkitc.h"
 
+#include "esp_wifi.h"
+
 static bool g_output_state;
 static void push_btn_cb(void *arg)
 {
@@ -24,7 +26,8 @@ static void push_btn_cb(void *arg)
 
 static void button_press_3sec_cb(void *arg)
 {
-    nvs_flash_erase();
+    //nvs_flash_erase();
+    esp_wifi_restore();
     esp_restart();          //restart after the nvs flash has been erased
 }
 

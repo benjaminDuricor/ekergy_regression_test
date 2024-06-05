@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"ota_os_freertos.h": "c",
+			"ota_mqtt_interface.h": "c",
+			"ota_pal.h": "c",
+			"demo_header.h": "c",
+			"tls_freertos.h": "c",
+			"demo_config.h": "c"
+		}
+	}
+}

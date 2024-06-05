@@ -126,8 +126,8 @@
  */
 
 #define APP_VERSION_MAJOR         0
-#define APP_VERSION_MINOR         9
-#define APP_VERSION_BUILD         6
+#define APP_VERSION_MINOR         1
+#define APP_VERSION_BUILD         1
 
 /**
  * @brief The name of the operating system that the application is running on.
