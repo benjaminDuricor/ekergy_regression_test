@@ -250,6 +250,14 @@ const int WIFI_CONNECTED_EVENT = BIT0;
 #define PROV_TRANSPORT_BLE      "ble"
 #define QRCODE_BASE_URL         "https://espressif.github.io/esp-jumpstart/qrcode.html"
 
+#define PROVISIONING_TIMEOUT_SEC 60  // Set your timeout period (e.g., 60 seconds)
+
+static void start_provisioning_timer(void);
+static void stop_provisioning_timer(void);
+static void provisioning_timeout_handler(void* arg);
+
+static esp_timer_handle_t provisioning_timer;
+
 /* CA Root certificate, device ("Thing") certificate and device
  * ("Thing") key.
 
@@ -662,6 +670,42 @@ void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data) {
     }
 }
 
+// Timer callback function to handle provisioning timeout
+static void provisioning_timeout_handler(void* arg) {
+    ESP_LOGI(TAG, "Provisioning timeout reached. Entering deep sleep...");
+
+    touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER);
+    // Set reference voltage for charging/discharging
+    // In this case, the high reference valtage will be 2.4V - 1V = 1.4V
+    // The low reference voltage will be 0.5
+    // The larger the range, the larger the pulse count value.
+
+    touch_pad_set_voltage(TOUCH_HVOLT_2V4, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
+    
+    // Configure the touchpad wake-up source
+    touch_pad_config(TOUCH_PAD_NUM9, TOUCH_THRESH_NO_USE);
+    calibrate_touch_pad(TOUCH_PAD_NUM9);
+    esp_sleep_enable_touchpad_wakeup();
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+
+    esp_deep_sleep_start();
+}
+
+// Function to initialize and start the provisioning timer
+static void start_provisioning_timer(void) {
+    const esp_timer_create_args_t timer_args = {
+        .callback = &provisioning_timeout_handler,
+        .name = "provisioning_timer"
+    };
+    ESP_ERROR_CHECK(esp_timer_create(&timer_args, &provisioning_timer));
+    ESP_ERROR_CHECK(esp_timer_start_once(provisioning_timer, PROVISIONING_TIMEOUT_SEC * 1000000));
+}
+
+// Function to stop the provisioning timer
+static void stop_provisioning_timer(void) {
+    ESP_ERROR_CHECK(esp_timer_stop(provisioning_timer));
+    ESP_ERROR_CHECK(esp_timer_delete(provisioning_timer));
+}
 
 void aws_iot_task(void *param) {
     char cPayload[100];
@@ -1192,6 +1236,8 @@ while (1) {
 
 void app_main()
 {
+    // Initialize touch pad
+    touch_pad_init();
     esp_chip_info_t chip_info;
     esp_chip_info(&chip_info);
     /*
@@ -1315,6 +1361,9 @@ void app_main()
          *     - Wi-Fi SSID when scheme is wifi_prov_scheme_softap
          *     - device name when scheme is wifi_prov_scheme_ble
          */
+
+        start_provisioning_timer(); // Start the provisioning timer
+
         char service_name[12];
         get_device_service_name(service_name, sizeof(service_name));
         /* What is the security level that we want (0 or 1):
@@ -1374,55 +1423,16 @@ void app_main()
 
 
         wifi_prov_print_qr(service_name, pop, PROV_TRANSPORT_BLE);
-                // Start a delay before checking provisioning status
-        vTaskDelay(pdMS_TO_TICKS(120000)); // 2-minutes delay
 
-        // Check if provisioned after delay
-        ESP_ERROR_CHECK(wifi_prov_mgr_is_provisioned(&provisioned));
-
-        wifi_prov_mgr_deinit(); // Always deinit after use
-
-        if (!provisioned) {
-            //deep sleep init
-            // Initialize touch pad peripheral.
-            // The default fsm mode is software trigger mode.
-
-            ESP_ERROR_CHECK(touch_pad_init());
-            // If use touch pad wake up, should set touch sensor FSM mode at 'TOUCH_FSM_MODE_TIMER'.
-            
-            touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER);
-            // Set reference voltage for charging/discharging
-            // In this case, the high reference valtage will be 2.4V - 1V = 1.4V
-            // The low reference voltage will be 0.5
-            // The larger the range, the larger the pulse count value.
-
-            touch_pad_set_voltage(TOUCH_HVOLT_2V4, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
-            
-            //init RTC IO and mode for touch pad.
-            // touch pad number 9 is GPIO 32
-
-            touch_pad_config(TOUCH_PAD_NUM9, TOUCH_THRESH_NO_USE);
-
-            calibrate_touch_pad(TOUCH_PAD_NUM9);
-
-            printf("Enabling touch pad wakeup\n");
-            esp_sleep_enable_touchpad_wakeup();
-            esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
-            ESP_LOGI(TAG, "Not provisioned within 30 seconds. Entering deep sleep.");
-            esp_deep_sleep_start();
-        } else {
-            ESP_LOGI(TAG, "Provisioned successfully.");
-            // Proceed with application logic
-        }
-        /* Uncomment the following to wait for the provisioning to finish and then release
-         * the resources of the manager. Since in this case de-initialization is triggered
-         * by the default event loop handler, we don't need to call the following */
-         wifi_prov_mgr_wait();
-         wifi_prov_mgr_deinit();
+        wifi_prov_mgr_wait();
+        wifi_prov_mgr_deinit();
         /* Print QR code for provisioning */
 
         //wifi_prov_print_qr(service_name, pop, PROV_TRANSPORT_BLE);
-    } else {
+        stop_provisioning_timer(); // Stop the provisioning timer once provisioning is done
+
+        //wifi_prov_print_qr(service_name, pop, PROV_TRANSPORT_BLE);
+    } else {    
          ESP_LOGI(TAG, "Already provisioned, starting Wi-Fi STA");
 
         /* We don't need the manager as device is already provisioned,
