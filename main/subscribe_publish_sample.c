@@ -187,6 +187,8 @@ static void initialize_sntp(void);
 #define DEFAULT_WAKEUP_LEVEL    ESP_GPIO_WAKEUP_GPIO_LOW
 #define TOUCH_THRESH_NO_USE 0
 
+#include "esp_task_wdt.h"
+
 typedef struct {
     int timer_group;
     int timer_idx;
@@ -708,6 +710,11 @@ static void stop_provisioning_timer(void) {
 }
 
 void aws_iot_task(void *param) {
+
+    // Initialize the watchdog timer
+    esp_task_wdt_init(10, true); // Set timeout to 10 seconds, panic=true
+    esp_task_wdt_add(NULL); // Add current task to the watchdog
+
     char cPayload[100];
 
     short ecgHandsOn;
@@ -820,6 +827,10 @@ while (1) {
         counter++;
         oldSequenceTimer = sequenceTimer;
         sequenceTimer = (unsigned short)counter/30;
+
+        // ESP_LOGI(TAG, "Resetting WDT 1");
+        esp_task_wdt_reset();
+
         //select LED color based on the state
         if(sequenceTimer!= oldSequenceTimer){
             ledSelect = LED_GREEN;
@@ -1055,6 +1066,11 @@ while (1) {
                         // to minimize current consumption.
                         rtc_gpio_isolate(GPIO_NUM_12);
                         gpio_set_level(SDN, 0);             //disable AD8232 operaion 
+
+                        //We should delete wdt before entering into sleep
+                        //to prevent it from mistaken sleeping as hang
+                        // esp_task_wdt_delete(NULL);
+
                         printf("Entering deep sleep\n");
                         esp_deep_sleep_start();  
                     }
@@ -1226,7 +1242,7 @@ while (1) {
                 ecgState = ECG_IDLE;
                 break;
             }
-
+            esp_task_wdt_reset();
     }//end while
 
     ESP_LOGE(TAG, "An error occurred in the main loop.");
