@@ -1522,7 +1522,7 @@ void aws_iot_task(void *param)
 void app_main()
 {
     esp_log_set_vprintf(custom_log_function);
-
+    touch_pad_init();
     esp_chip_info_t chip_info;
     esp_chip_info(&chip_info);
     /*
