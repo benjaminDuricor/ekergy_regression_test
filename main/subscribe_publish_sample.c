@@ -119,6 +119,8 @@
 #include "soc/sens_periph.h"
 #include "driver/touch_pad.h"
 
+#include "aws_iot_task.h"
+
 #define DEFAULT_WAKEUP_LEVEL ESP_GPIO_WAKEUP_GPIO_LOW
 /* Include firmware version struct definition. */
 #include "ota_appversion32.h"
@@ -211,11 +213,11 @@ typedef struct
     uint64_t timer_counter_value;
 } example_timer_event_t;
 
-static xQueueHandle s_timer_queue;
+xQueueHandle s_timer_queue;
 
 static esp_adc_cal_characteristics_t *adc_chars;
 
-static const adc_channel_t channel = ADC_CHANNEL_0;     // GPIO36 ADC1 CH0 Sensor VP
+adc_channel_t channel = ADC_CHANNEL_0;     // GPIO36 ADC1 CH0 Sensor VP
 static const adc_bits_width_t width = ADC_WIDTH_BIT_12; // 0 9bit, 1 10 bit, 2 11bit ,3  12 bit -set to 12 bit
 
 static const adc_atten_t atten = ADC_ATTEN_DB_11; /*!<The input voltage of ADC will be reduced to about 1/3.6*/
@@ -236,7 +238,7 @@ unsigned char blinkingPattern[9][10] = {
 
 };
 /* FreeRTOS event group to signal when we are connected & ready to make a request */
-static EventGroupHandle_t wifi_event_group;
+EventGroupHandle_t wifi_event_group;
 short ecgState;
 char macAddress[13];
 short nvsProvisionStatus = false;
@@ -373,21 +375,21 @@ extern void *otaThread();
 extern void provisionEventCallback();
 // ycc 3-13-22 end
 // deep  sleep
-static void calibrate_touch_pad(touch_pad_t pad);
+// static void calibrate_touch_pad(touch_pad_t pad);
 
-float w0 = 0.0, w1 = 0.0, w2 = 0.0, w3 = 0.0, w4 = 0.0; // for bandpath filter
-float bpfX, bpfX1;
-unsigned short aData;
-int peakCounter = 0; // counts time after peak is detected
-int detectedBeat = 0;
-float bpfS0 = 0, bpfS1 = 0, bpfS2 = 0, bpfS3 = 0, bpfS4 = 0, bpfS5 = 0, bpfS6 = 0, bpftmp = 0; // slope bpfS2 is peak
-float mVariance = 0, mAvg = 100, m0 = 100, m1 = 100, m2 = 100, m3 = 100, m4 = 100;             // threshold average of last five peaks
-float pVariance = 300000, pAvg = 0, p0 = 1000, p1 = 0, p2 = 1000, p3 = 0, p4 = 1000;           // threshold average of last five peaks
-float variance = 650;
-float nAvg = 0, n0 = 0, n1 = 0, n2 = 0, n3 = 0, n4 = 0, n5 = 0, n6 = 0; // max noise level
-int hb0 = 0, hb1 = 0;                                                   // last heart beat
-float heartRate = 0;
-float noiseFloor = 0;
+// float w0 = 0.0, w1 = 0.0, w2 = 0.0, w3 = 0.0, w4 = 0.0; // for bandpath filter
+// float bpfX, bpfX1;
+// unsigned short aData;
+// int peakCounter = 0; // counts time after peak is detected
+// int detectedBeat = 0;
+// float bpfS0 = 0, bpfS1 = 0, bpfS2 = 0, bpfS3 = 0, bpfS4 = 0, bpfS5 = 0, bpfS6 = 0, bpftmp = 0; // slope bpfS2 is peak
+// float mVariance = 0, mAvg = 100, m0 = 100, m1 = 100, m2 = 100, m3 = 100, m4 = 100;             // threshold average of last five peaks
+// float pVariance = 300000, pAvg = 0, p0 = 1000, p1 = 0, p2 = 1000, p3 = 0, p4 = 1000;           // threshold average of last five peaks
+// float variance = 650;
+// float nAvg = 0, n0 = 0, n1 = 0, n2 = 0, n3 = 0, n4 = 0, n5 = 0, n6 = 0; // max noise level
+// int hb0 = 0, hb1 = 0;                                                   // last heart beat
+// float heartRate = 0;
+// float noiseFloor = 0;
 
 unsigned short *dataBuffer;
 
@@ -408,7 +410,7 @@ static void initialize_sntp(void)
     sntp_init();
 }
 
-static void calibrate_touch_pad(touch_pad_t pad)
+void calibrate_touch_pad(touch_pad_t pad)
 {
     int avg = 0;
     const size_t calibration_count = 128;
@@ -942,582 +944,582 @@ void subscribe_test()
         printf("mqttreturn 0= %d\n", mqttReturn);
     }
 }
-void aws_iot_task(void *param)
-{
-    // Initialize the watchdog timer
-    esp_task_wdt_init(10, true); // Set timeout to 10 seconds, panic=true
-    esp_task_wdt_add(NULL);      // Add current task to the watchdog
-    char cPayload[100];
+// void aws_iot_task(void *param)
+// {
+//     // Initialize the watchdog timer
+//     esp_task_wdt_init(10, true); // Set timeout to 10 seconds, panic=true
+//     esp_task_wdt_add(NULL);      // Add current task to the watchdog
+//     char cPayload[100];
 
-    short ecgHandsOn;
-    unsigned int ecgAcqCounter;
-    unsigned int ecgRecCounter;
-    unsigned int ecgMqttCounter;
-    unsigned short *headBuffer;
-    unsigned char *headTxBuffer;
-    // unsigned char *mqttTxBuffer;
-    unsigned short sequenceTimer;
-    unsigned short oldSequenceTimer;
-    unsigned short ledSelect;
+//     short ecgHandsOn;
+//     unsigned int ecgAcqCounter;
+//     unsigned int ecgRecCounter;
+//     unsigned int ecgMqttCounter;
+//     unsigned short *headBuffer;
+//     unsigned char *headTxBuffer;
+//     // unsigned char *mqttTxBuffer;
+//     unsigned short sequenceTimer;
+//     unsigned short oldSequenceTimer;
+//     unsigned short ledSelect;
 
-    char strftime_buf[64]; // for sntp time
+//     char strftime_buf[64]; // for sntp time
 
-    // ycc 031221 end
-    ecgState = (short)ECG_IDLE;
-    ecgHandsOn = 0;
-    ecgAcqCounter = 0;
-    ecgRecCounter = 0;
-    ecgMqttCounter = 0;
-    sequenceTimer = 0;
-    oldSequenceTimer = 0;
-    ledSelect = LED_GREEN;
-    jobCheckState = JOB_CHECK_STATE_NOT_CHECKED;
+//     // ycc 031221 end
+//     ecgState = (short)ECG_IDLE;
+//     ecgHandsOn = 0;
+//     ecgAcqCounter = 0;
+//     ecgRecCounter = 0;
+//     ecgMqttCounter = 0;
+//     sequenceTimer = 0;
+//     oldSequenceTimer = 0;
+//     ledSelect = LED_GREEN;
+//     jobCheckState = JOB_CHECK_STATE_NOT_CHECKED;
 
-    AWS_IoT_Client client;
+//     AWS_IoT_Client client;
 
-    headTxBuffer = (unsigned char *)calloc(21000, sizeof(unsigned char)); // ycc 031022 change to 21000 from 31000
-    if (headTxBuffer == NULL)
-    {
-        ESP_LOGE(TAG, "Failed to allocate data buffer");
-        abort();
-    }
+//     headTxBuffer = (unsigned char *)calloc(21000, sizeof(unsigned char)); // ycc 031022 change to 21000 from 31000
+//     if (headTxBuffer == NULL)
+//     {
+//         ESP_LOGE(TAG, "Failed to allocate data buffer");
+//         abort();
+//     }
 
-    headBuffer = (char *)headTxBuffer; // for MAC address, no more MAC address 6->0
-    dataBuffer = headBuffer;
+//     headBuffer = (char *)headTxBuffer; // for MAC address, no more MAC address 6->0
+//     dataBuffer = headBuffer;
 
-    // mqttTxBuffer = (unsigned char *)calloc(21000, sizeof(unsigned char)); //ycc 031122 change to 21000 from 31000
-    // if(mqttTxBuffer == NULL)
-    //     {
-    //         ESP_LOGE(TAG, "Failed to allocate mqttTx buffer");
-    //         abort();
-    //     }
+//     // mqttTxBuffer = (unsigned char *)calloc(21000, sizeof(unsigned char)); //ycc 031122 change to 21000 from 31000
+//     // if(mqttTxBuffer == NULL)
+//     //     {
+//     //         ESP_LOGE(TAG, "Failed to allocate mqttTx buffer");
+//     //         abort();
+//     //     }
 
-    uint8_t brd_mac[6];
-    char topic_name[16];
-    const char *topic_prefix = "ecg/"; // set up topic on AWS IoT to take messages with ecg/MACaddress format
-    esp_wifi_get_mac(WIFI_IF_STA, brd_mac);
-    snprintf(topic_name, 18, "%s%02X%02X%02X%02X%02X%02X",
-             topic_prefix, brd_mac[0], brd_mac[1], brd_mac[2], brd_mac[3], brd_mac[4], brd_mac[5]);
+//     uint8_t brd_mac[6];
+//     char topic_name[16];
+//     const char *topic_prefix = "ecg/"; // set up topic on AWS IoT to take messages with ecg/MACaddress format
+//     esp_wifi_get_mac(WIFI_IF_STA, brd_mac);
+//     snprintf(topic_name, 18, "%s%02X%02X%02X%02X%02X%02X",
+//              topic_prefix, brd_mac[0], brd_mac[1], brd_mac[2], brd_mac[3], brd_mac[4], brd_mac[5]);
 
-    ESP_LOGI(TAG, "calloc return %x", (int)dataBuffer);
+//     ESP_LOGI(TAG, "calloc return %x", (int)dataBuffer);
 
-    int32_t i = 0;
+//     int32_t i = 0;
 
-    IoT_Error_t rc = FAILURE;
+//     IoT_Error_t rc = FAILURE;
 
-    /* Wait for WiFI to show as connected */
-    int bits = xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT,
-                                   false, true, portMAX_DELAY);
+//     /* Wait for WiFI to show as connected */
+//     int bits = xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT,
+//                                    false, true, portMAX_DELAY);
 
-    if (!(bits & CONNECTED_BIT))
-    {
-        ESP_LOGE(TAG, "timeout bits=%d\n", bits);
-        gpio_set_level(LED_RED, 0);
-        ecgState = ECG_ERROR_WIFI;
-    }
+//     if (!(bits & CONNECTED_BIT))
+//     {
+//         ESP_LOGE(TAG, "timeout bits=%d\n", bits);
+//         gpio_set_level(LED_RED, 0);
+//         ecgState = ECG_ERROR_WIFI;
+//     }
 
-    int counter = 0;
-    // int counter2=0;
-    int counter3 = 0;
-    unsigned long deepSleepCounter = 10000; // aproximately 33.3 sec before going to sleep 3.3mx10000 = 33
-    int debouceCounter = 101;
-    int jobCheckCounter = 0;
-    // turn off all LEDs so that the LEDs turned on during provisioning can be turned off
-    gpio_set_level(LED_GREEN, 1); // turn on Green LED
-    gpio_set_level(LED_BLUE, 1);  // turn off BLUE and RED LEDs
-    gpio_set_level(LED_RED, 1);
-    // if (mqttSessionEstablished != true)
-    // {
-    //     int ret = establishConnection();
-    //     // printf("establish connection return = %d\n", ret);
-    //     // printf("Publish....");
-    // }
-    // if (mqttSessionEstablished == true)
-    // {
-    //     const char *topic = "testbruce";
-    //     char jsonMessage[256];
-    //     snprintf(jsonMessage, sizeof(jsonMessage),
-    //              "{\"message\": \"Hello, World!\", \"timestamp\": %ld, \"version\": \"%s\"}",
-    //              time(NULL), APP_VERSION_STRING);
-    //     uint16_t topicLen = (uint16_t)strlen(topic);
-    //     uint32_t msgSize = (uint32_t)strlen(jsonMessage);
-    //     uint8_t qos = 0; // QoS 0
+//     int counter = 0;
+//     // int counter2=0;
+//     int counter3 = 0;
+//     unsigned long deepSleepCounter = 10000; // aproximately 33.3 sec before going to sleep 3.3mx10000 = 33
+//     int debouceCounter = 101;
+//     int jobCheckCounter = 0;
+//     // turn off all LEDs so that the LEDs turned on during provisioning can be turned off
+//     gpio_set_level(LED_GREEN, 1); // turn on Green LED
+//     gpio_set_level(LED_BLUE, 1);  // turn off BLUE and RED LEDs
+//     gpio_set_level(LED_RED, 1);
+//     // if (mqttSessionEstablished != true)
+//     // {
+//     //     int ret = establishConnection();
+//     //     // printf("establish connection return = %d\n", ret);
+//     //     // printf("Publish....");
+//     // }
+//     // if (mqttSessionEstablished == true)
+//     // {
+//     //     const char *topic = "testbruce";
+//     //     char jsonMessage[256];
+//     //     snprintf(jsonMessage, sizeof(jsonMessage),
+//     //              "{\"message\": \"Hello, World!\", \"timestamp\": %ld, \"version\": \"%s\"}",
+//     //              time(NULL), APP_VERSION_STRING);
+//     //     uint16_t topicLen = (uint16_t)strlen(topic);
+//     //     uint32_t msgSize = (uint32_t)strlen(jsonMessage);
+//     //     uint8_t qos = 0; // QoS 0
 
-    //     OtaMqttStatus_t status = mqttPublish(topic, topicLen, jsonMessage, msgSize, qos);
+//     //     OtaMqttStatus_t status = mqttPublish(topic, topicLen, jsonMessage, msgSize, qos);
 
-    //     if (status == OtaMqttSuccess)
-    //     {
-    //         IOT_INFO("MQTT Publish Success");
-    //     }
-    //     else
-    //     {
-    //         IOT_ERROR("MQTT Publish failed with status: %d", status);
-    //     }
-    // }
-    /*
-        initialize_sntp();
+//     //     if (status == OtaMqttSuccess)
+//     //     {
+//     //         IOT_INFO("MQTT Publish Success");
+//     //     }
+//     //     else
+//     //     {
+//     //         IOT_ERROR("MQTT Publish failed with status: %d", status);
+//     //     }
+//     // }
+//     /*
+//         initialize_sntp();
 
-        // wait for time to be set
+//         // wait for time to be set
 
-        time_t now = 0;
-        struct tm timeinfo = { 0 };
-        int retry = 0;
-        const int retry_count = 10;
-        while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < retry_count) {
-            ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
-            vTaskDelay(2000 / portTICK_PERIOD_MS);
-        }
-        time(&now);
-        localtime_r(&now, &timeinfo);
-        setenv("TZ", "EST5EDT,M3.2.0/2,M11.1.0", 1);
-        tzset();
-        struct tm *tm_struct = localtime_r(&now, &timeinfo);
-        strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-        ESP_LOGI(TAG, "%s=  %d", strftime_buf, tm_struct->tm_hour);
-    */
-    while (1)
-    {
-        example_timer_event_t evt;
-        xQueueReceive(s_timer_queue, &evt, portMAX_DELAY);
-        // pinMode(LED_RED, OUTPUT);
-        counter++;
-        oldSequenceTimer = sequenceTimer;
-        sequenceTimer = (unsigned short)counter / 30;
-        esp_task_wdt_reset();
+//         time_t now = 0;
+//         struct tm timeinfo = { 0 };
+//         int retry = 0;
+//         const int retry_count = 10;
+//         while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < retry_count) {
+//             ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
+//             vTaskDelay(2000 / portTICK_PERIOD_MS);
+//         }
+//         time(&now);
+//         localtime_r(&now, &timeinfo);
+//         setenv("TZ", "EST5EDT,M3.2.0/2,M11.1.0", 1);
+//         tzset();
+//         struct tm *tm_struct = localtime_r(&now, &timeinfo);
+//         strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+//         ESP_LOGI(TAG, "%s=  %d", strftime_buf, tm_struct->tm_hour);
+//     */
+//     while (1)
+//     {
+//         example_timer_event_t evt;
+//         xQueueReceive(s_timer_queue, &evt, portMAX_DELAY);
+//         // pinMode(LED_RED, OUTPUT);
+//         counter++;
+//         oldSequenceTimer = sequenceTimer;
+//         sequenceTimer = (unsigned short)counter / 30;
+//         esp_task_wdt_reset();
 
-        // select LED color based on the state
-        if (sequenceTimer != oldSequenceTimer)
-        {
-            ledSelect = LED_GREEN;
-            switch (ecgState)
-            {
-            case ECG_IDLE:
-                ledSelect = LED_GREEN;
-                break;
-            case ECG_ACQUIRING:
-            case ECG_RECORDING:
-            case ECG_SENDING_MQTT:
-                ledSelect = LED_BLUE;
-                break;
-            case ECG_SSID_RESET:
-                ledSelect = LED_RED;
-                break;
-            case ECG_FINISH:
-                ledSelect = LED_GREEN;
-                break;
-            case ECG_ERROR_WIFI:
-            case ECG_ERROR_MQTT:
-            default:
-                ledSelect = LED_RED;
-                break;
-            }
-            gpio_set_level(LED_GREEN, 1); // turn off all LEDs
-            gpio_set_level(LED_BLUE, 1);
-            gpio_set_level(LED_RED, 1);
+//         // select LED color based on the state
+//         if (sequenceTimer != oldSequenceTimer)
+//         {
+//             ledSelect = LED_GREEN;
+//             switch (ecgState)
+//             {
+//             case ECG_IDLE:
+//                 ledSelect = LED_GREEN;
+//                 break;
+//             case ECG_ACQUIRING:
+//             case ECG_RECORDING:
+//             case ECG_SENDING_MQTT:
+//                 ledSelect = LED_BLUE;
+//                 break;
+//             case ECG_SSID_RESET:
+//                 ledSelect = LED_RED;
+//                 break;
+//             case ECG_FINISH:
+//                 ledSelect = LED_GREEN;
+//                 break;
+//             case ECG_ERROR_WIFI:
+//             case ECG_ERROR_MQTT:
+//             default:
+//                 ledSelect = LED_RED;
+//                 break;
+//             }
+//             gpio_set_level(LED_GREEN, 1); // turn off all LEDs
+//             gpio_set_level(LED_BLUE, 1);
+//             gpio_set_level(LED_RED, 1);
 
-            gpio_set_level(ledSelect, (uint32_t)blinkingPattern[ecgState][sequenceTimer]); // set the selected LED on
-        }
-        counter3++;
-        jobCheckCounter++;
-        if (counter > 300)
-        {
-            // printf("-----------------------------------------------------------------counter= %d----------------------------------------------\n", counter2);
-            counter = 0; // this counter is used for LED sequencing
-            // ycc 032122
+//             gpio_set_level(ledSelect, (uint32_t)blinkingPattern[ecgState][sequenceTimer]); // set the selected LED on
+//         }
+//         counter3++;
+//         jobCheckCounter++;
+//         if (counter > 300)
+//         {
+//             // printf("-----------------------------------------------------------------counter= %d----------------------------------------------\n", counter2);
+//             counter = 0; // this counter is used for LED sequencing
+//             // ycc 032122
 
-            // uint32_t adc_reading = 0;
-            // Multisampling
-            // for (int i = 0; i < NO_OF_SAMPLES; i++)
-            //     adc_reading += adc1_get_raw((adc1_channel_t)channel);
+//             // uint32_t adc_reading = 0;
+//             // Multisampling
+//             // for (int i = 0; i < NO_OF_SAMPLES; i++)
+//             //     adc_reading += adc1_get_raw((adc1_channel_t)channel);
 
-            // adc_reading /= NO_OF_SAMPLES;
-            // Convert adc_reading to voltage in mV
-            // uint32_t voltage = esp_adc_cal_raw_to_voltage(adc_reading, adc_chars);
-            // printf("Raw: %d\tVoltage: %dmV\n", adc_reading, voltage);
-            // ESP_LOGI(TAG, "%f,%f,%f,%f, ecgstate=%d", bpfX, bpfX1, bpftmp, variance, ecgState);
-            // if(ecgState != ECG_IDLE)
-            uint32_t fs = xPortGetFreeHeapSize();
-            ESP_LOGI(TAG, "ecg state = %d, Stack remaining for task '%s' is %d bytes, free mem is %d", ecgState, pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL), fs);
-            /*
-                        time(&now);
-                        //localtime_r(&now, &timeinfo);
-                        struct tm *tm_struct = localtime_r(&now, &timeinfo);
-                        strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-                        ESP_LOGI(TAG, "%s=  %d", strftime_buf, tm_struct->tm_hour);
-                        ESP_LOGI(TAG, "%f,%f,%f,%f, ecgstate = %d\n", bpfX, bpfX1, bpftmp, variance, ecgState);
-                        if((tm_struct->tm_hour==0)&&(tm_struct->tm_min == 0)&&(tm_struct->tm_sec<=3))
-                            jobCheckState = JOB_CHECK_STATE_NOT_CHECKED;
-                        // if time is past midnight and before 2am check for job update
-                        if((tm_struct->tm_hour == 0) && (jobCheckState == JOB_CHECK_STATE_NOT_CHECKED)){
-                            gpio_set_level(LED_GREEN, 1);             //turn on Green LED
-                            gpio_set_level(LED_BLUE, 1);              //turn off BLUE
-                            gpio_set_level(LED_RED,0);                //turn on RED LED
-                            aws_iot_demo_main(0, NULL);     // iot job has built in function to make sure it is executed so don't worry about ret
-                            jobCheckState =  JOB_CHECK_STATE_CHECKED_NO_UPDATE; //check to see if there is an update
-                            jobCheckCounter = 0;
-                            gpio_set_level(LED_GREEN, 1);             //turn on Green LED
-                            gpio_set_level(LED_BLUE, 1);              //turn off BLUE
-                            gpio_set_level(LED_RED,1);
-                            }
-                            */
-        }
+//             // adc_reading /= NO_OF_SAMPLES;
+//             // Convert adc_reading to voltage in mV
+//             // uint32_t voltage = esp_adc_cal_raw_to_voltage(adc_reading, adc_chars);
+//             // printf("Raw: %d\tVoltage: %dmV\n", adc_reading, voltage);
+//             // ESP_LOGI(TAG, "%f,%f,%f,%f, ecgstate=%d", bpfX, bpfX1, bpftmp, variance, ecgState);
+//             // if(ecgState != ECG_IDLE)
+//             uint32_t fs = xPortGetFreeHeapSize();
+//             ESP_LOGI(TAG, "ecg state = %d, Stack remaining for task '%s' is %d bytes, free mem is %d", ecgState, pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL), fs);
+//             /*
+//                         time(&now);
+//                         //localtime_r(&now, &timeinfo);
+//                         struct tm *tm_struct = localtime_r(&now, &timeinfo);
+//                         strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+//                         ESP_LOGI(TAG, "%s=  %d", strftime_buf, tm_struct->tm_hour);
+//                         ESP_LOGI(TAG, "%f,%f,%f,%f, ecgstate = %d\n", bpfX, bpfX1, bpftmp, variance, ecgState);
+//                         if((tm_struct->tm_hour==0)&&(tm_struct->tm_min == 0)&&(tm_struct->tm_sec<=3))
+//                             jobCheckState = JOB_CHECK_STATE_NOT_CHECKED;
+//                         // if time is past midnight and before 2am check for job update
+//                         if((tm_struct->tm_hour == 0) && (jobCheckState == JOB_CHECK_STATE_NOT_CHECKED)){
+//                             gpio_set_level(LED_GREEN, 1);             //turn on Green LED
+//                             gpio_set_level(LED_BLUE, 1);              //turn off BLUE
+//                             gpio_set_level(LED_RED,0);                //turn on RED LED
+//                             aws_iot_demo_main(0, NULL);     // iot job has built in function to make sure it is executed so don't worry about ret
+//                             jobCheckState =  JOB_CHECK_STATE_CHECKED_NO_UPDATE; //check to see if there is an update
+//                             jobCheckCounter = 0;
+//                             gpio_set_level(LED_GREEN, 1);             //turn on Green LED
+//                             gpio_set_level(LED_BLUE, 1);              //turn off BLUE
+//                             gpio_set_level(LED_RED,1);
+//                             }
+//                             */
+//         }
 
-        if (((gpio_get_level((gpio_num_t)LOPlus) == 1) || (gpio_get_level((gpio_num_t)LOMinus) == 1)) && (debouceCounter > 100)) // ycc 022022 debounce
-        {
-            pVariance = 300000;
-            pAvg = 300;
-            p0 = 1000;
-            p1 = 0;
-            p2 = 1000;
-            p3 = 0;
-            p4 = 1000;
-            variance = 1000;
-            // counter = 0;
-            // counter3=0;
-            ecgHandsOn = 0;
+//         if (((gpio_get_level((gpio_num_t)LOPlus) == 1) || (gpio_get_level((gpio_num_t)LOMinus) == 1)) && (debouceCounter > 100)) // ycc 022022 debounce
+//         {
+//             pVariance = 300000;
+//             pAvg = 300;
+//             p0 = 1000;
+//             p1 = 0;
+//             p2 = 1000;
+//             p3 = 0;
+//             p4 = 1000;
+//             variance = 1000;
+//             // counter = 0;
+//             // counter3=0;
+//             ecgHandsOn = 0;
 
-            // if((gpio_get_level((gpio_num_t)LOPlus) == 1) && (gpio_get_level((gpio_num_t)LOMinus) == 0))
-            //     {
-            //         ecgState = ECG_SSID_RESET;
-            //     }
-        }
-        else
-        {
-            // ycc 022022
-            if (debouceCounter <= 100)
-            {
-                debouceCounter++;
-            }
-            else
-            {
-                debouceCounter = 0;
-            }
-            ecgHandsOn = 1;
-            gpio_set_level(LED_RED, 1);
-            // send the value of analog input 0:
-            // Data = 0;
-            // for (int i = 0; i < NO_OF_SAMPLES; i++)
-            aData = adc1_get_raw((adc1_channel_t)channel); // 2045*sin(counter/10) + 2048; //for testing comment out
-            // aData = aData/NO_OF_SAMPLES;
-            if ((aData < 4090) && (aData > 6))
-                bpfX = (float)aData; // Discount saturarted data, fill it with the last point
-            /*
-            w0 = 3.336612*w1 -4.225986*w2+ 2.425819*w3 - 0.537195*w4 + bpfX;
-            bpfX1 = 0.036575*(w0 - 2.0*w2 + w4);
-            w4 = w3;
-            w3 = w2;
-            w2 = w1;
-            w1 = w0;
-            */
-            w0 = 3.269793 * w1 - 4.169410 * w2 + 2.523669 * w3 - 0.624207 * w4 + bpfX;
-            bpfX1 = 0.082619 * (w0 - 2.0 * w2 + w4);
-            w4 = w3;
-            w3 = w2;
-            w2 = w1;
-            w1 = w0;
-            w0 = 3.000162 * w1 - 3.294086 * w2 + 1.577024 * w3 - 0.283222 * w4 + bpfX1;
-            bpfX1 = 0.065274 * (w0 - 2.0 * w2 + w4);
-            w4 = w3;
-            w3 = w2;
-            w2 = w1;
-            w1 = w0;
-            // end-band pass filter
+//             // if((gpio_get_level((gpio_num_t)LOPlus) == 1) && (gpio_get_level((gpio_num_t)LOMinus) == 0))
+//             //     {
+//             //         ecgState = ECG_SSID_RESET;
+//             //     }
+//         }
+//         else
+//         {
+//             // ycc 022022
+//             if (debouceCounter <= 100)
+//             {
+//                 debouceCounter++;
+//             }
+//             else
+//             {
+//                 debouceCounter = 0;
+//             }
+//             ecgHandsOn = 1;
+//             gpio_set_level(LED_RED, 1);
+//             // send the value of analog input 0:
+//             // Data = 0;
+//             // for (int i = 0; i < NO_OF_SAMPLES; i++)
+//             aData = adc1_get_raw((adc1_channel_t)channel); // 2045*sin(counter/10) + 2048; //for testing comment out
+//             // aData = aData/NO_OF_SAMPLES;
+//             if ((aData < 4090) && (aData > 6))
+//                 bpfX = (float)aData; // Discount saturarted data, fill it with the last point
+//             /*
+//             w0 = 3.336612*w1 -4.225986*w2+ 2.425819*w3 - 0.537195*w4 + bpfX;
+//             bpfX1 = 0.036575*(w0 - 2.0*w2 + w4);
+//             w4 = w3;
+//             w3 = w2;
+//             w2 = w1;
+//             w1 = w0;
+//             */
+//             w0 = 3.269793 * w1 - 4.169410 * w2 + 2.523669 * w3 - 0.624207 * w4 + bpfX;
+//             bpfX1 = 0.082619 * (w0 - 2.0 * w2 + w4);
+//             w4 = w3;
+//             w3 = w2;
+//             w2 = w1;
+//             w1 = w0;
+//             w0 = 3.000162 * w1 - 3.294086 * w2 + 1.577024 * w3 - 0.283222 * w4 + bpfX1;
+//             bpfX1 = 0.065274 * (w0 - 2.0 * w2 + w4);
+//             w4 = w3;
+//             w3 = w2;
+//             w2 = w1;
+//             w1 = w0;
+//             // end-band pass filter
 
-            bpfS0 = bpfS1;
-            bpfS1 = bpfS2;
-            bpfS2 = bpfS3;
-            bpfS3 = bpfS4;
-            bpfS4 = bpfS5;
-            bpfS5 = bpfS6;
-            bpfS6 = bpfX1;
+//             bpfS0 = bpfS1;
+//             bpfS1 = bpfS2;
+//             bpfS2 = bpfS3;
+//             bpfS3 = bpfS4;
+//             bpfS4 = bpfS5;
+//             bpfS5 = bpfS6;
+//             bpfS6 = bpfX1;
 
-            if ((bpfS3 > (mAvg + noiseFloor) / 2) && (peakCounter < 750) && (peakCounter > 100) && ((bpfS3 > bpfS2) && (bpfS3 > bpfS4)) && (((bpfS3 - bpfS0) > 3) && ((bpfS3 - bpfS6) > 3)) && (bpfS3 < 1500))
-            {
-                // heart beat detected
+//             if ((bpfS3 > (mAvg + noiseFloor) / 2) && (peakCounter < 750) && (peakCounter > 100) && ((bpfS3 > bpfS2) && (bpfS3 > bpfS4)) && (((bpfS3 - bpfS0) > 3) && ((bpfS3 - bpfS6) > 3)) && (bpfS3 < 1500))
+//             {
+//                 // heart beat detected
 
-                heartRate = 30000 / peakCounter;
+//                 heartRate = 30000 / peakCounter;
 
-                m0 = m1;
-                m1 = m2;
-                m2 = m3;
-                m3 = m4;
-                // if(bpfS3> 40 && bpfS3<150)
-                m4 = bpfS3;
-                mAvg = (m0 + m1 + m2 + m3 + m4) / 5;
-                // mVariance = (m0-mAvg)*(m0-mAvg)+(m1-mAvg)*(m1-mAvg)+(m2-mAvg)*(m2-mAvg)+(m3-mAvg)*(m3-mAvg)+(m4-mAvg)*(m4-mAvg);
-                p0 = p1;
-                p1 = p2;
-                p2 = p3;
-                p3 = p4;
-                p4 = peakCounter;
+//                 m0 = m1;
+//                 m1 = m2;
+//                 m2 = m3;
+//                 m3 = m4;
+//                 // if(bpfS3> 40 && bpfS3<150)
+//                 m4 = bpfS3;
+//                 mAvg = (m0 + m1 + m2 + m3 + m4) / 5;
+//                 // mVariance = (m0-mAvg)*(m0-mAvg)+(m1-mAvg)*(m1-mAvg)+(m2-mAvg)*(m2-mAvg)+(m3-mAvg)*(m3-mAvg)+(m4-mAvg)*(m4-mAvg);
+//                 p0 = p1;
+//                 p1 = p2;
+//                 p2 = p3;
+//                 p3 = p4;
+//                 p4 = peakCounter;
 
-                pAvg = (p0 + p1 + p2 + p3 + p4) / 5;
-                pVariance = ((p0 - pAvg) * (p0 - pAvg) + (p1 - pAvg) * (p1 - pAvg) + (p2 - pAvg) * (p2 - pAvg) + (p3 - pAvg) * (p3 - pAvg) + (p4 - pAvg) * (p4 - pAvg)) / 5;
-                variance = sqrt(pVariance);
+//                 pAvg = (p0 + p1 + p2 + p3 + p4) / 5;
+//                 pVariance = ((p0 - pAvg) * (p0 - pAvg) + (p1 - pAvg) * (p1 - pAvg) + (p2 - pAvg) * (p2 - pAvg) + (p3 - pAvg) * (p3 - pAvg) + (p4 - pAvg) * (p4 - pAvg)) / 5;
+//                 variance = sqrt(pVariance);
 
-                // digitalWrite(LEDPin,counter);
-                detectedBeat++;
-                bpftmp = bpfS3;
-                peakCounter = 0;
-            }
-            else
-            {
-                if (peakCounter > 5000)
-                {
-                    peakCounter = 0;
-                    detectedBeat--;
-                }
+//                 // digitalWrite(LEDPin,counter);
+//                 detectedBeat++;
+//                 bpftmp = bpfS3;
+//                 peakCounter = 0;
+//             }
+//             else
+//             {
+//                 if (peakCounter > 5000)
+//                 {
+//                     peakCounter = 0;
+//                     detectedBeat--;
+//                 }
 
-                peakCounter++;
-                if ((bpfS3 > bpfS2) && (bpfS3 > bpfS4))
-                {
+//                 peakCounter++;
+//                 if ((bpfS3 > bpfS2) && (bpfS3 > bpfS4))
+//                 {
 
-                    noiseFloor = (noiseFloor + bpfS3) / 2;
-                    if (peakCounter > 500)
-                        mAvg = 0.9 * mAvg;
-                }
-                bpftmp = 0;
-            } // end if-else
+//                     noiseFloor = (noiseFloor + bpfS3) / 2;
+//                     if (peakCounter > 500)
+//                         mAvg = 0.9 * mAvg;
+//                 }
+//                 bpftmp = 0;
+//             } // end if-else
 
-        } // end if-else
-        // state machine
+//         } // end if-else
+//         // state machine
 
-        switch (ecgState)
-        {
-        case ECG_IDLE:
-            if (ecgHandsOn == 1)
-            {
-                // printf("IDLE move to ACQUIRING\n");
-                ecgState = ECG_ACQUIRING;
-                // start ACQ timer
-                ecgAcqCounter = 0;
-                ecgRecCounter = 0;
-                ecgMqttCounter = 0;
-                dataBuffer = headBuffer;
-                deepSleepCounter = 10000;
-            }
-            else
-            {
-                deepSleepCounter--;
-                if (deepSleepCounter == 0)
-                {
-                    // deep sleep init
-                    // Initialize touch pad peripheral.
-                    // The default fsm mode is software trigger mode.
+//         switch (ecgState)
+//         {
+//         case ECG_IDLE:
+//             if (ecgHandsOn == 1)
+//             {
+//                 // printf("IDLE move to ACQUIRING\n");
+//                 ecgState = ECG_ACQUIRING;
+//                 // start ACQ timer
+//                 ecgAcqCounter = 0;
+//                 ecgRecCounter = 0;
+//                 ecgMqttCounter = 0;
+//                 dataBuffer = headBuffer;
+//                 deepSleepCounter = 10000;
+//             }
+//             else
+//             {
+//                 deepSleepCounter--;
+//                 if (deepSleepCounter == 0)
+//                 {
+//                     // deep sleep init
+//                     // Initialize touch pad peripheral.
+//                     // The default fsm mode is software trigger mode.
 
-                    ESP_ERROR_CHECK(touch_pad_init());
-                    // If use touch pad wake up, should set touch sensor FSM mode at 'TOUCH_FSM_MODE_TIMER'.
+//                     ESP_ERROR_CHECK(touch_pad_init());
+//                     // If use touch pad wake up, should set touch sensor FSM mode at 'TOUCH_FSM_MODE_TIMER'.
 
-                    touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER);
-                    // Set reference voltage for charging/discharging
-                    // In this case, the high reference valtage will be 2.4V - 1V = 1.4V
-                    // The low reference voltage will be 0.5
-                    // The larger the range, the larger the pulse count value.
+//                     touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER);
+//                     // Set reference voltage for charging/discharging
+//                     // In this case, the high reference valtage will be 2.4V - 1V = 1.4V
+//                     // The low reference voltage will be 0.5
+//                     // The larger the range, the larger the pulse count value.
 
-                    touch_pad_set_voltage(TOUCH_HVOLT_2V4, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
+//                     touch_pad_set_voltage(TOUCH_HVOLT_2V4, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
 
-                    // init RTC IO and mode for touch pad.
-                    //  touch pad number 9 is GPIO 32
+//                     // init RTC IO and mode for touch pad.
+//                     //  touch pad number 9 is GPIO 32
 
-                    touch_pad_config(TOUCH_PAD_NUM9, TOUCH_THRESH_NO_USE);
+//                     touch_pad_config(TOUCH_PAD_NUM9, TOUCH_THRESH_NO_USE);
 
-                    calibrate_touch_pad(TOUCH_PAD_NUM9);
+//                     calibrate_touch_pad(TOUCH_PAD_NUM9);
 
-                    printf("Enabling touch pad wakeup\n");
-                    esp_sleep_enable_touchpad_wakeup();
-                    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+//                     printf("Enabling touch pad wakeup\n");
+//                     esp_sleep_enable_touchpad_wakeup();
+//                     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
 
-                    // Isolate GPIO12 pin from external circuits. This is needed for modules
-                    // which have an external pull-up resistor on GPIO12 (such as ESP32-WROVER)
-                    // to minimize current consumption.
-                    rtc_gpio_isolate(GPIO_NUM_12);
-                    gpio_set_level(SDN, 0); // disable AD8232 operaion
-                    printf("Entering deep sleep\n");
+//                     // Isolate GPIO12 pin from external circuits. This is needed for modules
+//                     // which have an external pull-up resistor on GPIO12 (such as ESP32-WROVER)
+//                     // to minimize current consumption.
+//                     rtc_gpio_isolate(GPIO_NUM_12);
+//                     gpio_set_level(SDN, 0); // disable AD8232 operaion
+//                     printf("Entering deep sleep\n");
 
-                    esp_deep_sleep_start();
-                }
-            }
+//                     esp_deep_sleep_start();
+//                 }
+//             }
 
-            break;
-        case ECG_ACQUIRING:
+//             break;
+//         case ECG_ACQUIRING:
 
-            ecgAcqCounter++;
-            if (ecgHandsOn == 0)
-            {
-                // hands off go back to IDLE
-                printf("ACQUIRING move to IDLE due to echHandsOff\n");
-                ecgState = ECG_IDLE;
-                ecgAcqCounter = 0;
-            }
-            else if (ecgAcqCounter > ECG_ACQCOUNT)
-            { // can't recognize ecg signal, start recording just for troubleshooting
-                printf("ACQUIRING move to RECORDING due to ACQ timeout\n");
-                ecgState = ECG_RECORDING;
-                // start recording timer
-                ecgRecCounter = 0;
-                // set up pointer in the buffer for data to start recording
-            }
-            else if (variance < 100)
-            {
-                // printf("variance less than one hundred ACQUIRING move to RECORDING\n");
-                ecgState = ECG_RECORDING;
-                // start recording timer
-                ecgRecCounter = 0;
-                // ecg signal recognized, move to recording state
-                // set up pointer in the buffer for data
-            }
-            break;
-        case ECG_RECORDING:
-            // dataBuffer[ecgRecCounter] = aData;
-            *dataBuffer++ = aData; // ecgRecCounter;
-            ecgRecCounter++;
-            if (ecgHandsOn == 0)
-            { // hands off but there are enough samples to send so go ahead and send them
-                // printf("ECG_RECORDING: HANDS_OFF, ");
-                if (ecgRecCounter > ECG_RECCOUNT)
-                { // Set up MQTT}
-                    // printf("Count is greater than RECCOUNT, RECORDING MOVE TO SEND MQTT\n");
-                    ecgState = ECG_SENDING_MQTT;
-                    // ecgRecCounter = 0;
-                    ecgMqttCounter = 0;
-                }
-                else
-                // hands off go back to IDLE
-                {
-                    ecgState = ECG_IDLE;
-                    // printf("ECG_RECORDING mvoe to IDLE else clause\n");
-                }
-            }
-            else if (ecgRecCounter >= ECG_RECCOUNT)
-            { // finish timed recording, send data
-                // printf("ecgRecCounter > ECG_RECCOUNT, RECORDING MOVE TO SEND MQTT\n");
-                ecgState = ECG_SENDING_MQTT;
-                // ecgRecCounter = 0;
-                ecgMqttCounter = 0;
-                dataBuffer = headBuffer;
-            }
+//             ecgAcqCounter++;
+//             if (ecgHandsOn == 0)
+//             {
+//                 // hands off go back to IDLE
+//                 printf("ACQUIRING move to IDLE due to echHandsOff\n");
+//                 ecgState = ECG_IDLE;
+//                 ecgAcqCounter = 0;
+//             }
+//             else if (ecgAcqCounter > ECG_ACQCOUNT)
+//             { // can't recognize ecg signal, start recording just for troubleshooting
+//                 printf("ACQUIRING move to RECORDING due to ACQ timeout\n");
+//                 ecgState = ECG_RECORDING;
+//                 // start recording timer
+//                 ecgRecCounter = 0;
+//                 // set up pointer in the buffer for data to start recording
+//             }
+//             else if (variance < 100)
+//             {
+//                 // printf("variance less than one hundred ACQUIRING move to RECORDING\n");
+//                 ecgState = ECG_RECORDING;
+//                 // start recording timer
+//                 ecgRecCounter = 0;
+//                 // ecg signal recognized, move to recording state
+//                 // set up pointer in the buffer for data
+//             }
+//             break;
+//         case ECG_RECORDING:
+//             // dataBuffer[ecgRecCounter] = aData;
+//             *dataBuffer++ = aData; // ecgRecCounter;
+//             ecgRecCounter++;
+//             if (ecgHandsOn == 0)
+//             { // hands off but there are enough samples to send so go ahead and send them
+//                 // printf("ECG_RECORDING: HANDS_OFF, ");
+//                 if (ecgRecCounter > ECG_RECCOUNT)
+//                 { // Set up MQTT}
+//                     // printf("Count is greater than RECCOUNT, RECORDING MOVE TO SEND MQTT\n");
+//                     ecgState = ECG_SENDING_MQTT;
+//                     // ecgRecCounter = 0;
+//                     ecgMqttCounter = 0;
+//                 }
+//                 else
+//                 // hands off go back to IDLE
+//                 {
+//                     ecgState = ECG_IDLE;
+//                     // printf("ECG_RECORDING mvoe to IDLE else clause\n");
+//                 }
+//             }
+//             else if (ecgRecCounter >= ECG_RECCOUNT)
+//             { // finish timed recording, send data
+//                 // printf("ecgRecCounter > ECG_RECCOUNT, RECORDING MOVE TO SEND MQTT\n");
+//                 ecgState = ECG_SENDING_MQTT;
+//                 // ecgRecCounter = 0;
+//                 ecgMqttCounter = 0;
+//                 dataBuffer = headBuffer;
+//             }
 
-            break;
-        case ECG_SENDING_MQTT:
-            // AWS_IoT_Client client;
-            rc = FAILURE;
-            gpio_set_level(LED_BLUE, 0);
-            // ycc 3-13-22 added the following from aws_iot_demo_main
-            /* Return error status. */
-            int returnStatus = EXIT_SUCCESS;
+//             break;
+//         case ECG_SENDING_MQTT:
+//             // AWS_IoT_Client client;
+//             rc = FAILURE;
+//             gpio_set_level(LED_BLUE, 0);
+//             // ycc 3-13-22 added the following from aws_iot_demo_main
+//             /* Return error status. */
+//             int returnStatus = EXIT_SUCCESS;
 
-            if (returnStatus == EXIT_SUCCESS)
-            {
-                /* Start OTA demo. */
-                // returnStatus = startOTADemo();
-                // ycc 031422
-                uint32_t free_heap_size = 0, min_free_heap_size = 0;
-                free_heap_size = esp_get_free_heap_size();
-                min_free_heap_size = esp_get_minimum_free_heap_size();
-                // printf("\n free heap size = %d \t  min_free_heap_size = %d \n",free_heap_size,min_free_heap_size);
-                uint32_t fs = xPortGetFreeHeapSize();
-                ESP_LOGI(TAG, "Send MQTT Stack remaining for task '%s' is %d bytes at counter, free mem is %d", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL), fs);
-                if (mqttSessionEstablished != true)
-                {
-                    int ret = establishConnection();
-                    // printf("establish connection return = %d\n", ret);
-                    // printf("Publish....");
-                }
-                if (mqttSessionEstablished == true)
-                {
+//             if (returnStatus == EXIT_SUCCESS)
+//             {
+//                 /* Start OTA demo. */
+//                 // returnStatus = startOTADemo();
+//                 // ycc 031422
+//                 uint32_t free_heap_size = 0, min_free_heap_size = 0;
+//                 free_heap_size = esp_get_free_heap_size();
+//                 min_free_heap_size = esp_get_minimum_free_heap_size();
+//                 // printf("\n free heap size = %d \t  min_free_heap_size = %d \n",free_heap_size,min_free_heap_size);
+//                 uint32_t fs = xPortGetFreeHeapSize();
+//                 ESP_LOGI(TAG, "Send MQTT Stack remaining for task '%s' is %d bytes at counter, free mem is %d", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL), fs);
+//                 if (mqttSessionEstablished != true)
+//                 {
+//                     int ret = establishConnection();
+//                     // printf("establish connection return = %d\n", ret);
+//                     // printf("Publish....");
+//                 }
+//                 if (mqttSessionEstablished == true)
+//                 {
 
-                    unsigned short totalLen = 2 * ecgRecCounter;
-                    char topic_name[16];
-                    const char *topic_prefix = "ecg/";
-                    uint8_t brd_mac[6];
-                    esp_wifi_get_mac(WIFI_IF_STA, brd_mac);
-                    snprintf(topic_name, 18, "%s%02X%02X%02X%02X%02X%02X",
-                             topic_prefix, brd_mac[0], brd_mac[1], brd_mac[2], brd_mac[3], brd_mac[4], brd_mac[5]);
-                    const char *TOPIC = topic_name;
-                    const int TOPIC_LEN = strlen(TOPIC);
-                    mqttPublishNoMutex(TOPIC, TOPIC_LEN,
-                                       headBuffer,
-                                       totalLen,
-                                       QOS0);
-                }
-            }
-            char topic_name[16];
-            snprintf(topic_name, 18, "%02X%02X%02X%02X%02X%02X",
-                     brd_mac[0], brd_mac[1], brd_mac[2], brd_mac[3], brd_mac[4], brd_mac[5]);
-            // send_logs_via_mqtt(topic_name);
+//                     unsigned short totalLen = 2 * ecgRecCounter;
+//                     char topic_name[16];
+//                     const char *topic_prefix = "ecg/";
+//                     uint8_t brd_mac[6];
+//                     esp_wifi_get_mac(WIFI_IF_STA, brd_mac);
+//                     snprintf(topic_name, 18, "%s%02X%02X%02X%02X%02X%02X",
+//                              topic_prefix, brd_mac[0], brd_mac[1], brd_mac[2], brd_mac[3], brd_mac[4], brd_mac[5]);
+//                     const char *TOPIC = topic_name;
+//                     const int TOPIC_LEN = strlen(TOPIC);
+//                     mqttPublishNoMutex(TOPIC, TOPIC_LEN,
+//                                        headBuffer,
+//                                        totalLen,
+//                                        QOS0);
+//                 }
+//             }
+//             char topic_name[16];
+//             snprintf(topic_name, 18, "%02X%02X%02X%02X%02X%02X",
+//                      brd_mac[0], brd_mac[1], brd_mac[2], brd_mac[3], brd_mac[4], brd_mac[5]);
+//             // send_logs_via_mqtt(topic_name);
 
-            // ycc end 3-13-22
-            // ycc 031422 end
-            disconnect();
-            ecgState = ECG_FINISH;
-            ecgRecCounter = 0;
-            jobCheckCounter = 0;
+//             // ycc end 3-13-22
+//             // ycc 031422 end
+//             disconnect();
+//             ecgState = ECG_FINISH;
+//             ecgRecCounter = 0;
+//             jobCheckCounter = 0;
 
-            ecgMqttCounter++;
-            break;
-        case ECG_FINISH:
-            if (ecgHandsOn == 0)
-            {
-                ecgState = ECG_IDLE;
-                jobCheckCounter = 0;
-                break;
-            }
-            else
-            {
+//             ecgMqttCounter++;
+//             break;
+//         case ECG_FINISH:
+//             if (ecgHandsOn == 0)
+//             {
+//                 ecgState = ECG_IDLE;
+//                 jobCheckCounter = 0;
+//                 break;
+//             }
+//             else
+//             {
 
-                if (jobCheckCounter < 6000)
-                {
-                    ecgState = ECG_FINISH;
-                    break;
-                }
-                else
-                {
-                    gpio_set_level(LED_GREEN, 1); // turn on Green LED
-                    gpio_set_level(LED_BLUE, 1);  // turn off BLUE
-                    gpio_set_level(LED_RED, 0);   // turn on RED LED
+//                 if (jobCheckCounter < 6000)
+//                 {
+//                     ecgState = ECG_FINISH;
+//                     break;
+//                 }
+//                 else
+//                 {
+//                     gpio_set_level(LED_GREEN, 1); // turn on Green LED
+//                     gpio_set_level(LED_BLUE, 1);  // turn off BLUE
+//                     gpio_set_level(LED_RED, 0);   // turn on RED LED
 
-                    // ESP_LOGI(TAG, "aws_iot_demo main entry point: Stack remaining for task '%s' is %d bytes at counter, free mem is %d", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL), xPortGetFreeHeapSize());
-                    //  ycc 031222 commentned out the next  four lines
-                    // int ret = aws_iot_demo_main(0, NULL);
-                    // ESP_LOGI(TAG, "aws_iot_demo main exit point: Stack remaining for task '%s' is %d bytes at counter, free mem is %d", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL), xPortGetFreeHeapSize());
-                    // if(ret==EXIT_SUCCESS)
-                    //     jobCheckState =  JOB_CHECK_STATE_CHECKED_NO_UPDATE; //check to see if there is an update
-                    jobCheckCounter = 0;
-                    ecgState = ECG_FINISH;
-                    gpio_set_level(LED_GREEN, 1); // turn on Green LED
-                    gpio_set_level(LED_BLUE, 1);  // turn off BLUE
-                    gpio_set_level(LED_RED, 1);
+//                     // ESP_LOGI(TAG, "aws_iot_demo main entry point: Stack remaining for task '%s' is %d bytes at counter, free mem is %d", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL), xPortGetFreeHeapSize());
+//                     //  ycc 031222 commentned out the next  four lines
+//                     // int ret = aws_iot_demo_main(0, NULL);
+//                     // ESP_LOGI(TAG, "aws_iot_demo main exit point: Stack remaining for task '%s' is %d bytes at counter, free mem is %d", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL), xPortGetFreeHeapSize());
+//                     // if(ret==EXIT_SUCCESS)
+//                     //     jobCheckState =  JOB_CHECK_STATE_CHECKED_NO_UPDATE; //check to see if there is an update
+//                     jobCheckCounter = 0;
+//                     ecgState = ECG_FINISH;
+//                     gpio_set_level(LED_GREEN, 1); // turn on Green LED
+//                     gpio_set_level(LED_BLUE, 1);  // turn off BLUE
+//                     gpio_set_level(LED_RED, 1);
 
-                    break;
-                }
-            }
-            break;
-        case ECG_OTA_UPDATE:
-            ecgState = ECG_OTA_UPDATE;
-            break;
-        case ECG_SSID_RESET:
-            if (counter3 < 3000)
-                break;
-            else
-            {
-                ecgState = ECG_IDLE;
-                counter3 = 0;
-            }
-            break;
-        default:
-            // printf("Default move to IDLE\n");
-            ecgState = ECG_IDLE;
-            break;
-        }
-        esp_task_wdt_reset();
+//                     break;
+//                 }
+//             }
+//             break;
+//         case ECG_OTA_UPDATE:
+//             ecgState = ECG_OTA_UPDATE;
+//             break;
+//         case ECG_SSID_RESET:
+//             if (counter3 < 3000)
+//                 break;
+//             else
+//             {
+//                 ecgState = ECG_IDLE;
+//                 counter3 = 0;
+//             }
+//             break;
+//         default:
+//             // printf("Default move to IDLE\n");
+//             ecgState = ECG_IDLE;
+//             break;
+//         }
+//         esp_task_wdt_reset();
 
-        // break;
-    } // end while
+//         // break;
+//     } // end while
 
-    ESP_LOGE(TAG, "An error occurred in the main loop.");
+//     ESP_LOGE(TAG, "An error occurred in the main loop.");
 
-    abort();
-}
+//     abort();
+// }
 
 void app_main()
 {
