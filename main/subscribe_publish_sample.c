@@ -826,7 +826,6 @@ void trigger_alarm_mqtt(const char *macAddress)
     char id[length + 1];
 
     generateRandomID(id, length);
-    printf("TESTTTTTT");
     if (mqttSessionEstablished != true)
     {
         int ret = establishConnection();
@@ -1989,7 +1988,7 @@ void app_main()
                         /* Get OTA statistics for currently executing job. */
                         /* Delay if mqtt process loop is set to zero.*/
                         if (MQTT_PROCESS_LOOP_TIMEOUT_MS > 0)
-                        {
+                            {
                             vTaskDelay(500);
                         }
                         printf("Delay task in MQTT_Processloop\n");

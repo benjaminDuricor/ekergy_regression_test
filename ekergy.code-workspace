@@ -6,12 +6,35 @@
 	],
 	"settings": {
 		"files.associations": {
+			"*.inc": "php",
 			"ota_os_freertos.h": "c",
 			"ota_mqtt_interface.h": "c",
 			"ota_pal.h": "c",
 			"demo_header.h": "c",
 			"tls_freertos.h": "c",
-			"demo_config.h": "c"
+			"demo_config.h": "c",
+			"core_mqtt.h": "c",
+			"time.h": "c",
+			"stdio.h": "c",
+			"esp_adc_cal.h": "c",
+			"esp_sntp.h": "c",
+			"ota_appversion32.h": "c",
+			"aws_iot_config.h": "c",
+			"event_groups.h": "c",
+			"task.h": "c",
+			"queue.h": "c",
+			"nvs_flash.h": "c",
+			"tcpip_adapter.h": "c",
+			"esp_event.h": "c",
+			"adc.h": "c",
+			"freertos.h": "c",
+			"esp_partition.h": "c",
+			"esp_wifi.h": "c",
+			"mqtt_subscription_manager.h": "c",
+			"iot_button.h": "c",
+			"logging_levels.h": "c",
+			"cstdlib": "c",
+			"app_priv.h": "c"
 		}
 	}
 }

@@ -42,6 +42,8 @@ extern unsigned char *headTxBuffer;
 extern unsigned short sequenceTimer;
 extern unsigned short oldSequenceTimer;
 extern unsigned short ledSelect;
+extern unsigned long deepSleepCounter;
+
 extern short jobCheckState;
 extern unsigned char blinkingPattern[9][10];
 extern unsigned short *dataBuffer;
@@ -63,6 +65,9 @@ extern float noiseFloor;
 extern QueueHandle_t s_timer_queue;
 extern adc_channel_t channel;
 extern bool mqttSessionEstablished;
+extern bool deep_sleep_called;
+extern bool deep_sleep_test_switch;
+extern bool rec_mqtt_switch;
 
 // Function declarations
 int establishConnection(void);
@@ -80,7 +85,11 @@ void disconnect(void);
 #define ECG_OTA_UPDATE 7
 #define ECG_SSID_RESET 8
 #define ECG_ACQCOUNT 3000
+#ifdef TEST_ENV
+#define ECG_RECCOUNT 1000
+#else
 #define ECG_RECCOUNT 9000
+#endif
 #define ECG_MQTTCOUNT 2000
 #define JOB_CHECK_STATE_NOT_CHECKED 0
 #define JOB_CHECK_STATE_CHECKED_NO_UPDATE 1
