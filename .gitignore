@@ -11,7 +11,7 @@
 .DS_Store
 
 # Components Unit Test Apps files
-components/
+# components/
 
 build/
 
